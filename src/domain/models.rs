@@ -34,7 +34,7 @@ pub struct VaultState {
 impl VaultState {
     pub fn new(salt: &[u8; 16]) -> Self {
         Self {
-            salt: salt.clone(),
+            salt: *salt,
             nonce: [0; 12],
             cipher: vec![],
         }

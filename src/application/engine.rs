@@ -21,8 +21,8 @@ pub struct VaultEngine<S: StoragePort, C: CryptoPort> {
 impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
     pub fn new(storage: S, crypto: C) -> Self {
         Self {
-            storage: storage,
-            crypto: crypto,
+            storage,
+            crypto,
             vault_state: None,
             entries: BTreeMap::new(),
             dirty: false,
@@ -44,17 +44,23 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         self.dirty
     }
 
-    /// Creates new vault with given name and password, initializing vault state and deriving key from password and salt
+    /// Creates new vault with given name and password, initializing vault state and deriving key from password and salt.
+    /// Auto-commits an initial empty payload so the file always exists after creation.
     pub fn create_vault(&mut self, name: &str, password: &str) -> Result<(), VaultError> {
         if !self.is_locked() {
             return Err(VaultError::Unlocked);
         }
 
+        self.storage.set_path(name.into());
+        if self.storage.exists() {
+            return Err(VaultError::VaultAlreadyExists);
+        }
+
         let salt = self.crypto.salt_gen();
         self.vault_state = Some(VaultState::new(&salt));
-
-        self.storage.set_path(name.into());
         self.crypto.init(password, &salt)?;
+
+        self.commit()?;
 
         Ok(())
     }
@@ -110,7 +116,8 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             .crypto
             .decrypt(&v_state.cipher, &v_state.nonce)
             .map_err(|_| {
-                self.vault_state = None; //Invalid password, keeps vault locked
+                self.vault_state = None;
+                self.crypto.reset();
                 VaultError::InvalidPassword
             });
 
@@ -160,10 +167,9 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         if self.is_locked() {
             return Err(VaultError::Locked);
         }
+        let entry = self.entries.remove(service).ok_or(VaultError::EntryNotFound)?;
         self.dirty = true;
-        self.entries
-            .remove(service)
-            .ok_or(VaultError::EntryNotFound)
+        Ok(entry)
     }
 
     /// Gets entry by service name

@@ -12,6 +12,6 @@ fn main() -> anyhow::Result<()> {
     let crypto = AesGcmCrypto::new();
     let engine = VaultEngine::new(storage, crypto);
 
-    let cli = VaultCli::new(engine);
-    cli?.run()
+    let mut cli = VaultCli::new(engine)?;
+    cli.run()
 }

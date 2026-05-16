@@ -3,7 +3,7 @@ use aes_gcm::{
     aead::{Aead, OsRng, rand_core::RngCore},
 };
 use argon2::Argon2;
-use zeroize::ZeroizeOnDrop;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::domain::{errors::CryptoError, ports::CryptoPort};
 
@@ -32,8 +32,14 @@ impl CryptoPort for AesGcmCrypto {
         Ok(())
     }
 
+    fn reset(&mut self) {
+        if let Some(mut k) = self.key.take() {
+            k.zeroize();
+        }
+    }
+
     fn encrypt(&self, plaintext: &[u8]) -> Result<(Vec<u8>, [u8; 12]), CryptoError> {
-        let key = Key::<Aes256Gcm>::from(self.key.clone().ok_or(CryptoError::NotInitialized)?);
+        let key = Key::<Aes256Gcm>::from(self.key.ok_or(CryptoError::NotInitialized)?);
         let cipher = Aes256Gcm::new(&key);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let ciphertext = cipher
@@ -43,7 +49,7 @@ impl CryptoPort for AesGcmCrypto {
     }
 
     fn decrypt(&self, ciphertext: &[u8], nonce: &[u8]) -> Result<Vec<u8>, CryptoError> {
-        let key = Key::<Aes256Gcm>::from(self.key.clone().ok_or(CryptoError::NotInitialized)?);
+        let key = Key::<Aes256Gcm>::from(self.key.ok_or(CryptoError::NotInitialized)?);
         let cipher = Aes256Gcm::new(&key);
         let nonce_array: [u8; 12] = nonce.try_into().map_err(|_| CryptoError::InvalidNonce)?;
         let plaintext = cipher

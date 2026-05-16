@@ -253,7 +253,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
         } else {
             let name = self.engine.current_vault().unwrap_or("unknown".into());
             let dirty = self.engine.is_dirty();
-            let count = self.engine.get_entries().unwrap_or(Vec::new()).len();
+            let count = self.engine.get_entries().unwrap_or_default().len();
 
             if dirty {
                 format!(

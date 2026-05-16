@@ -45,8 +45,10 @@ impl Completer for VaultHelper {
         pos: usize,
         _: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Pair>)> {
-        let start = 0;
-        let input = &line[..pos];
+        // Find where the current token starts so only that token is replaced,
+        // not the entire line. Scan backwards from the cursor position for a space.
+        let start = line[..pos].rfind(' ').map(|i| i + 1).unwrap_or(0);
+        let input = &line[start..pos];
 
         let matches = self
             .commands

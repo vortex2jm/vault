@@ -20,10 +20,7 @@ impl FileStorage {
         // Complete path
         let path = base_path.join("default.vault");
 
-        Self {
-            path: path,
-            base_path: base_path,
-        }
+        Self { path, base_path }
     }
 
     fn hash_file(path: &PathBuf) -> Result<Vec<u8>, StorageError> {
@@ -44,7 +41,10 @@ impl StoragePort for FileStorage {
     }
 
     fn get_path(&self) -> Option<String> {
-        self.path.to_str().map(|s| s.to_string())
+        self.path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string())
     }
 
     fn save(&self, data: &[u8]) -> Result<(), StorageError> {
@@ -68,7 +68,7 @@ impl StoragePort for FileStorage {
         }
 
         let mut file = File::create(&self.path)?;
-        if let Err(_) = file.write_all(data).and_then(|_| file.sync_all()) {
+        if file.write_all(data).and_then(|_| file.sync_all()).is_err() {
             // If write fails, restores backup
             if backup_path.exists() {
                 std::fs::copy(&backup_path, &self.path)?;
@@ -107,10 +107,11 @@ impl StoragePort for FileStorage {
             let path = entry.path();
 
             // Filters files with ".vault" only
-            if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("vault") {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    vaults.push(stem.to_string());
-                }
+            if path.is_file()
+                && path.extension().and_then(|e| e.to_str()) == Some("vault")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                vaults.push(stem.to_string());
             }
         }
 

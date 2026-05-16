@@ -17,6 +17,9 @@ pub enum VaultError {
     #[error("Vault not found")]
     VaultNotFound,
 
+    #[error("Vault already exists")]
+    VaultAlreadyExists,
+
     #[error("Serialization failed")]
     Serialization,
 
