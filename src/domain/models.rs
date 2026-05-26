@@ -22,6 +22,17 @@ impl Entry {
             updated_at: now,
         }
     }
+
+    pub fn update(&mut self, username: Option<String>, passwd: Option<String>) {
+        let now = chrono::Utc::now().timestamp();
+        if let Some(u) = username {
+            self.username = u;
+        }
+        if let Some(p) = passwd {
+            self.passwd = p;
+        }
+        self.updated_at = now;
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, SchemaWrite, SchemaRead)]

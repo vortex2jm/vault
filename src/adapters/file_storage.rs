@@ -1,9 +1,11 @@
 use sha2::{Digest, Sha256};
 use std::{
-    fs::{self, File, create_dir_all},
+    fs::{self, File, OpenOptions, create_dir_all},
     io::{BufReader, Read, Write},
     path::PathBuf,
 };
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 use crate::domain::{errors::StorageError, ports::StoragePort};
 
@@ -67,11 +69,30 @@ impl StoragePort for FileStorage {
             }
         }
 
+        // Create the vault file with restrictive permissions (owner read/write only).
+        // File::create inherits the process umask (commonly 644); using OpenOptions
+        // with an explicit mode guarantees 600 regardless of the user's umask.
+        #[cfg(unix)]
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&self.path)?;
+
+        #[cfg(not(unix))]
         let mut file = File::create(&self.path)?;
         if file.write_all(data).and_then(|_| file.sync_all()).is_err() {
-            // If write fails, restores backup
-            if backup_path.exists() {
-                std::fs::copy(&backup_path, &self.path)?;
+            // Write failed — attempt to restore from backup.
+            // The restore error is handled separately so it doesn't mask
+            // the original write failure.
+            if backup_path.exists()
+                && let Err(restore_err) = std::fs::copy(&backup_path, &self.path)
+            {
+                eprintln!(
+                    "CRITICAL: vault write failed and backup restore also failed: {}",
+                    restore_err
+                );
             }
             return Err(StorageError::IntegrityError);
         }
@@ -92,21 +113,18 @@ impl StoragePort for FileStorage {
     }
 
     fn list_vaults(&self) -> Result<Vec<String>, StorageError> {
-        // Unrecoverable error
-        let home = dirs_2::home_dir().expect("Error: Could not found home dir!");
-        let vault_dir = home.join(".vault");
-        
+        let vault_dir = &self.base_path;
+
         let mut vaults = Vec::new();
-        
+
         if !vault_dir.exists() {
             return Ok(vaults);
         }
 
-        for entry in fs::read_dir(&vault_dir)? {
+        for entry in fs::read_dir(vault_dir)? {
             let entry = entry?;
             let path = entry.path();
 
-            // Filters files with ".vault" only
             if path.is_file()
                 && path.extension().and_then(|e| e.to_str()) == Some("vault")
                 && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
@@ -116,5 +134,42 @@ impl StoragePort for FileStorage {
         }
 
         Ok(vaults)
+    }
+
+    fn rename(&mut self, new_name: String) -> Result<(), StorageError> {
+        let new_path = self.base_path.join(format!("{}.vault", new_name));
+        let old_bkp = self.path.with_extension("bkp");
+        let new_bkp = new_path.with_extension("bkp");
+
+        fs::rename(&self.path, &new_path)?;
+
+        // Best-effort rename of the backup; not fatal if it doesn't exist.
+        if old_bkp.exists() {
+            fs::rename(&old_bkp, &new_bkp).ok();
+        }
+
+        self.path = new_path;
+        Ok(())
+    }
+
+    fn delete(&self, name: String) -> Result<(), StorageError> {
+        let vault_path = self.base_path.join(format!("{}.vault", name));
+        let bkp_path = vault_path.with_extension("bkp");
+
+        if !vault_path.exists() {
+            return Err(StorageError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Vault '{}' not found", name),
+            )));
+        }
+
+        fs::remove_file(&vault_path)?;
+
+        // Best-effort removal of the backup.
+        if bkp_path.exists() {
+            fs::remove_file(&bkp_path).ok();
+        }
+
+        Ok(())
     }
 }

@@ -19,9 +19,14 @@ impl AesGcmCrypto {
 
     fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
         let mut output_key = [0u8; 32];
-        Argon2::default()
+        if Argon2::default()
             .hash_password_into(password.as_bytes(), salt, &mut output_key)
-            .map_err(|_| CryptoError::KeyDerivationError)?;
+            .is_err()
+        {
+            // Zeroize even the partial key material before returning the error.
+            output_key.zeroize();
+            return Err(CryptoError::KeyDerivationError);
+        }
         Ok(output_key)
     }
 }
@@ -39,8 +44,11 @@ impl CryptoPort for AesGcmCrypto {
     }
 
     fn encrypt(&self, plaintext: &[u8]) -> Result<(Vec<u8>, [u8; 12]), CryptoError> {
-        let key = Key::<Aes256Gcm>::from(self.key.ok_or(CryptoError::NotInitialized)?);
-        let cipher = Aes256Gcm::new(&key);
+        // Use as_ref() + from_slice() to avoid copying the key bytes onto the stack
+        // (ok_or() on a Copy type would silently duplicate the key material).
+        let key_bytes = self.key.as_ref().ok_or(CryptoError::NotInitialized)?;
+        let key = Key::<Aes256Gcm>::from_slice(key_bytes);
+        let cipher = Aes256Gcm::new(key);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let ciphertext = cipher
             .encrypt(&nonce, plaintext)
@@ -49,8 +57,10 @@ impl CryptoPort for AesGcmCrypto {
     }
 
     fn decrypt(&self, ciphertext: &[u8], nonce: &[u8]) -> Result<Vec<u8>, CryptoError> {
-        let key = Key::<Aes256Gcm>::from(self.key.ok_or(CryptoError::NotInitialized)?);
-        let cipher = Aes256Gcm::new(&key);
+        // Same as encrypt: use as_ref() + from_slice() to avoid a key copy on the stack.
+        let key_bytes = self.key.as_ref().ok_or(CryptoError::NotInitialized)?;
+        let key = Key::<Aes256Gcm>::from_slice(key_bytes);
+        let cipher = Aes256Gcm::new(key);
         let nonce_array: [u8; 12] = nonce.try_into().map_err(|_| CryptoError::InvalidNonce)?;
         let plaintext = cipher
             .decrypt(&Nonce::from(nonce_array), ciphertext)
@@ -62,5 +72,33 @@ impl CryptoPort for AesGcmCrypto {
         let mut salt = [0u8; 16];
         OsRng.fill_bytes(&mut salt);
         salt
+    }
+
+    fn gen_password(&self, length: usize) -> String {
+        const CHARSET: &[u8] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+        let n = CHARSET.len();
+        let limit = (256 / n) * n;
+        let mut password = String::with_capacity(length);
+        let mut buf = [0u8; 1];
+        while password.len() < length {
+            OsRng.fill_bytes(&mut buf);
+            let b = buf[0] as usize;
+            if b < limit {
+                password.push(CHARSET[b % n] as char);
+            }
+        }
+        password
+    }
+
+    fn verify_password(&self, password: &str, salt: &[u8]) -> bool {
+        match (Self::derive_key(password, salt), &self.key) {
+            (Ok(mut derived), Some(current)) => {
+                let matches = &derived == current;
+                derived.zeroize();
+                matches
+            }
+            _ => false,
+        }
     }
 }

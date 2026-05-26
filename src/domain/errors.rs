@@ -17,6 +17,9 @@ pub enum VaultError {
     #[error("Vault not found")]
     VaultNotFound,
 
+    #[error("Invalid vault name: use only letters, digits, hyphens and underscores")]
+    InvalidVaultName,
+
     #[error("Vault already exists")]
     VaultAlreadyExists,
 
