@@ -220,6 +220,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             }
 
             Command::Export(path) => {
+                let path = Self::expand_path(&path);
                 println!(
                     "{}WARNING:{} This will write all passwords as plain text to '{}'.",
                     YELLOW, RESET, path
@@ -233,6 +234,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             }
 
             Command::Import(path) => {
+                let path = Self::expand_path(&path);
                 let count = self.engine.import(&path)?;
                 if count > 0 {
                     println!(
@@ -404,6 +406,17 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
         let mut input = String::new();
         io::stdin().read_line(&mut input).ok();
         matches!(input.trim(), "y" | "Y")
+    }
+
+    /// Expands a leading `~` to the user's home directory.
+    fn expand_path(path: &str) -> String {
+        if path.starts_with("~/") || path == "~" {
+            if let Some(home) = std::env::var_os("HOME") {
+                let home = home.to_string_lossy();
+                return format!("{}{}", home, &path[1..]);
+            }
+        }
+        path.to_string()
     }
 
     fn print_help() {
