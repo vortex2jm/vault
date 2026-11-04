@@ -275,14 +275,19 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         Ok((name, count))
     }
 
-    /// Renames the current vault (file + backup) to `new_name`.
+    /// Renames the current vault (file + backup) to `new_name`, which must not
+    /// belong to another vault.
     pub fn rename_vault(&mut self, new_name: &str) -> Result<(), VaultError> {
         if self.is_locked() {
             return Err(VaultError::Locked);
         }
         Self::validate_name(new_name)?;
-        self.storage.rename(new_name.to_string())?;
-        Ok(())
+        self.storage
+            .rename(new_name.to_string())
+            .map_err(|e| match e {
+                StorageError::AlreadyExists => VaultError::VaultAlreadyExists,
+                other => other.into(),
+            })
     }
 
     /// Exports all entries to a CSV file at `path` (plaintext — caller must warn user).

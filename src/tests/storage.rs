@@ -3,7 +3,10 @@
 use std::fs;
 
 use super::support::TempDir;
-use crate::{adapters::file_storage::FileStorage, domain::ports::StoragePort};
+use crate::{
+    adapters::file_storage::FileStorage,
+    domain::{errors::StorageError, ports::StoragePort},
+};
 
 fn storage(dir: &TempDir, name: &str) -> FileStorage {
     let mut storage = FileStorage::with_base_path(dir.path().to_path_buf());
@@ -95,6 +98,23 @@ fn rename_moves_the_vault_and_its_backup() {
     assert!(dir.file("new.bkp").exists());
     assert!(!dir.file("old.vault").exists());
     assert!(!dir.file("old.bkp").exists());
+}
+
+#[test]
+fn rename_refuses_to_replace_another_vault() {
+    let dir = TempDir::new();
+    let other = storage(&dir, "other");
+    other.save(b"other-v1").unwrap();
+    other.save(b"other-v2").unwrap();
+    let mut storage = storage(&dir, "mine");
+    storage.save(b"mine-v1").unwrap();
+    storage.save(b"mine-v2").unwrap();
+
+    assert!(matches!(storage.rename("other".into()), Err(StorageError::AlreadyExists)));
+    assert_eq!(storage.get_path().as_deref(), Some("mine"));
+    assert_eq!(storage.load().unwrap(), b"mine-v2");
+    assert_eq!(fs::read(dir.file("other.vault")).unwrap(), b"other-v2");
+    assert_eq!(fs::read(dir.file("other.bkp")).unwrap(), b"other-v1");
 }
 
 #[test]

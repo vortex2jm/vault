@@ -106,7 +106,7 @@ This ensures that a crash or power loss during a write does not leave the vault 
 | Ciphertext tampering | AES-GCM authentication tag — decryption fails on any modification |
 | Secrets lingering in RAM after lock | `ZeroizeOnDrop` on key, `Zeroize` on entries, explicit zeroize on passwords |
 | Vault file corruption on crash | Backup + fsync write protocol |
-| Accidental vault overwrite | `create_vault` now checks for existing file before proceeding |
+| Accidental vault overwrite | `create` and `rename` refuse a name that already belongs to a vault |
 
 ### Out of Scope / Limitations
 

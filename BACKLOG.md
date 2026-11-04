@@ -19,7 +19,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 
 ## Bugs and hardening
 
-- [ ] 🔴 **B1** `rename` silently overwrites an existing vault (and its `.bkp`): `fs::rename` replaces the destination.
+- [x] 🔴 **B1** `rename` silently overwrites an existing vault (and its `.bkp`): `fs::rename` replaces the destination.
 - [ ] 🔴 **B2** Non-atomic save (truncates in place, `.bkp` not fsynced, restore only on in-process errors) and no lock against two sessions on the same vault (the last commit wins).
 - [ ] 🔴 **B3** A vault whose payload exceeds 4 MiB commits but never opens again (wincode's default read limit). Fix together with E1.
 - [ ] 🟠 **B4** Sub-prompts (`update` username, confirmations, exit menu) use raw `read_line`: arrow keys are stored in the field as escape sequences.

@@ -239,3 +239,21 @@ fn rename_and_drop_vaults() {
     assert!(s.output().contains("(no vaults found)"));
     s.exit();
 }
+
+#[test]
+fn rename_refuses_a_name_already_taken() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("work", "pw");
+    s.command("lock");
+    s.expect("Vault locked.");
+    s.create("personal", "pw");
+    s.command("rename work");
+    assert!(s.output().contains("Error: Vault already exists"));
+    assert_eq!(s.command("lock"), "vault[personal|0]> ");
+    s.expect("Vault locked.");
+    s.command("ls");
+    let out = s.output();
+    assert!(out.contains("personal") && out.contains("work"), "{out}");
+    s.exit();
+}

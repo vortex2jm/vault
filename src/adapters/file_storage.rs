@@ -141,6 +141,15 @@ impl StoragePort for FileStorage {
 
     fn rename(&mut self, new_name: String) -> Result<(), StorageError> {
         let new_path = self.base_path.join(format!("{}.vault", new_name));
+        if new_path == self.path {
+            return Ok(());
+        }
+        // fs::rename silently replaces an existing file: without this check,
+        // another vault (and its backup) would be destroyed.
+        if new_path.exists() {
+            return Err(StorageError::AlreadyExists);
+        }
+
         let old_bkp = self.path.with_extension("bkp");
         let new_bkp = new_path.with_extension("bkp");
 

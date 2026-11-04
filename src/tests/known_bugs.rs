@@ -16,24 +16,6 @@ use super::support::{TempDir, created, engine, path_str};
 use crate::domain::errors::VaultError;
 
 #[test]
-#[ignore = "B1: rename overwrites an existing vault"]
-fn b1_rename_must_not_overwrite_an_existing_vault() {
-    let dir = TempDir::new();
-    let mut engine = created(&dir, "target", "pw-target");
-    engine.add("bank", "alice", "s3cr3t").unwrap();
-    engine.commit().unwrap();
-    engine.lock().unwrap();
-
-    engine.create_vault("source", "pw-source").unwrap();
-    assert!(engine.rename_vault("target").is_err());
-    assert_eq!(engine.current_vault().as_deref(), Some("source"));
-    engine.lock().unwrap();
-
-    engine.unlock("target", "pw-target").unwrap();
-    assert_eq!(engine.get("bank").unwrap().passwd, "s3cr3t");
-}
-
-#[test]
 #[ignore = "B2: with two sessions on the same vault, the last commit wins"]
 fn b2_a_second_session_must_not_drop_the_first_ones_commit() {
     let dir = TempDir::new();

@@ -43,6 +43,9 @@ pub enum StorageError {
 
     #[error("Integrity check failed")]
     IntegrityError,
+
+    #[error("Target already exists")]
+    AlreadyExists,
 }
 
 #[derive(Debug, Error)]

@@ -1,5 +1,7 @@
 //! `VaultEngine` flows, with the real adapters on a temporary directory.
 
+use std::fs;
+
 use super::support::{TempDir, created, engine, path_str};
 use crate::domain::errors::VaultError;
 
@@ -232,6 +234,41 @@ fn rename_vault_moves_it_to_the_new_name() {
     assert!(matches!(engine.unlock("old", "pw"), Err(VaultError::VaultNotFound)));
     engine.unlock("new", "pw").unwrap();
     assert_eq!(engine.get("github").unwrap().passwd, "hunter2");
+}
+
+#[test]
+fn rename_vault_refuses_a_name_already_taken() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "target", "pw-target");
+    engine.add("bank", "alice", "s3cr3t").unwrap();
+    engine.commit().unwrap(); // target.bkp exists from here on
+    engine.lock().unwrap();
+
+    engine.create_vault("source", "pw-source").unwrap();
+    engine.add("github", "bob", "hunter2").unwrap();
+    engine.commit().unwrap(); // and so does source.bkp
+    assert!(matches!(engine.rename_vault("target"), Err(VaultError::VaultAlreadyExists)));
+    assert_eq!(engine.current_vault().as_deref(), Some("source"));
+    engine.lock().unwrap();
+
+    // Both vaults and the target's backup are untouched.
+    engine.unlock("target", "pw-target").unwrap();
+    assert_eq!(engine.get("bank").unwrap().passwd, "s3cr3t");
+    engine.lock().unwrap();
+    engine.unlock("source", "pw-source").unwrap();
+    assert_eq!(engine.get("github").unwrap().passwd, "hunter2");
+    engine.lock().unwrap();
+    fs::copy(dir.file("target.bkp"), dir.file("target-backup.vault")).unwrap();
+    engine.unlock("target-backup", "pw-target").unwrap();
+}
+
+#[test]
+fn renaming_a_vault_to_its_own_name_changes_nothing() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "personal", "pw");
+    engine.rename_vault("personal").unwrap();
+    assert_eq!(engine.current_vault().as_deref(), Some("personal"));
+    assert!(dir.file("personal.vault").exists());
 }
 
 #[test]

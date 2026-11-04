@@ -19,7 +19,8 @@ pub trait StoragePort {
     fn load(&self) -> Result<Vec<u8>, StorageError>;
     fn save(&self, data: &[u8]) -> Result<(), StorageError>;
     fn list_vaults(&self) -> Result<Vec<String>, StorageError>;
-    /// Renames the current vault file (and its backup) to `new_name`.
+    /// Renames the current vault file (and its backup) to `new_name`. Fails
+    /// with `StorageError::AlreadyExists` if another vault has that name.
     fn rename(&mut self, new_name: String) -> Result<(), StorageError>;
     /// Permanently deletes the vault file and backup for `name`.
     fn delete(&self, name: String) -> Result<(), StorageError>;
