@@ -15,7 +15,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 
 ## Foundation
 
-- [ ] **T0** Test suite (see `docs/TESTING.md`): unit tests per area in `src/tests/`, end-to-end tests in a pseudo-terminal in `tests/e2e/`, a v0 vault fixture, and `#[ignore]`d tests for the open bugs. Every later item adds its own tests.
+- [x] **T0** Test suite (see `docs/TESTING.md`): unit tests per area in `src/tests/`, end-to-end tests in a pseudo-terminal in `tests/e2e/`, a v0 vault fixture, and `#[ignore]`d tests for the open bugs. Every later item adds its own tests.
 
 ## Bugs and hardening
 

@@ -7,6 +7,9 @@ mod adapters;
 mod application;
 mod domain;
 
+#[cfg(test)]
+mod tests;
+
 fn main() -> anyhow::Result<()> {    
     let storage = FileStorage::new();
     let crypto = AesGcmCrypto::new();

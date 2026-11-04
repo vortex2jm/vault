@@ -18,3 +18,16 @@ sha2 = "0.10.9"
 thiserror = "2.0.17"
 wincode = { version = "0.2.5", features = ["derive"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
+
+# Pseudo-terminal for the end-to-end tests in tests/e2e/.
+[target.'cfg(unix)'.dev-dependencies]
+libc = "0.2"
+
+# Argon2 is very slow without optimisations: compile it (and its hash) with
+# them even in debug builds, so the test suite and `cargo run` stay fast.
+# Release builds are unaffected.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

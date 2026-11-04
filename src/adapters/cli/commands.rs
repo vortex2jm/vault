@@ -1,3 +1,4 @@
+#[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Lock,
     List,
@@ -19,4 +20,48 @@ pub enum Command {
     Drop(String),
     Gen(Option<usize>),
     Add { service: String, username: String },
+}
+
+impl Command {
+    /// Every command name, as offered by Tab completion.
+    pub const NAMES: &'static [&'static str] = &[
+        "create", "unlock", "lock", "add", "get", "rm", "commit", "ls", "list",
+        "update", "rename", "copy", "gen", "info", "export", "import",
+        "drop", "passwd",
+        "help", "exit", "clear",
+    ];
+
+    /// Parses a line typed at the prompt. Returns `None` for unknown commands
+    /// and for commands missing a required argument.
+    pub fn parse(input: &str) -> Option<Self> {
+        let mut p = input.split_whitespace();
+        let cmd = p.next()?;
+
+        Some(match cmd {
+            "unlock" => Command::Unlock(p.next()?.into()),
+            "create" => Command::Create(p.next()?.into()),
+            "add" => Command::Add {
+                service: p.next()?.into(),
+                username: p.next()?.into(),
+            },
+            "get"    => Command::Get(p.next()?.into()),
+            "rm"     => Command::Remove(p.next()?.into()),
+            "update" => Command::Update(p.next()?.into()),
+            "rename" => Command::Rename(p.next()?.into()),
+            "copy"   => Command::Copy(p.next()?.into()),
+            "export" => Command::Export(p.next()?.into()),
+            "import" => Command::Import(p.next()?.into()),
+            "gen"    => Command::Gen(p.next().and_then(|s| s.parse().ok())),
+            "commit" => Command::Commit,
+            "ls" | "list" => Command::List,
+            "lock"   => Command::Lock,
+            "info"   => Command::Info,
+            "drop"   => Command::Drop(p.next()?.into()),
+            "passwd" => Command::Passwd,
+            "help"   => Command::Help,
+            "clear"  => Command::Clear,
+            "exit"   => Command::Exit,
+            _ => return None,
+        })
+    }
 }

@@ -1,5 +1,5 @@
-mod commands;
-mod ui;
+pub(crate) mod commands;
+pub(crate) mod ui;
 
 use anyhow::Result;
 use rustyline::{Editor, error::ReadlineError, history::DefaultHistory};
@@ -22,12 +22,7 @@ pub struct VaultCli<S: StoragePort, C: CryptoPort> {
 
 impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
     pub fn new(engine: VaultEngine<S, C>) -> Result<Self> {
-        let helper = VaultHelper::new(vec![
-            "create", "unlock", "lock", "add", "get", "rm", "commit", "ls", "list",
-            "update", "rename", "copy", "gen", "info", "export", "import",
-            "drop", "passwd",
-            "help", "exit", "clear",
-        ]);
+        let helper = VaultHelper::new(Command::NAMES.to_vec());
 
         let mut rl = Editor::<VaultHelper, DefaultHistory>::new()?;
         rl.set_helper(Some(helper));
@@ -60,7 +55,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                 continue;
             }
 
-            let cmd = match self.parse_command(input) {
+            let cmd = match Command::parse(input) {
                 Some(c) => c,
                 None => {
                     println!("Unknown command. Type 'help' for a list of commands.\n");
@@ -81,38 +76,6 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
         }
 
         Ok(())
-    }
-
-    fn parse_command(&self, input: &str) -> Option<Command> {
-        let mut p = input.split_whitespace();
-        let cmd = p.next()?;
-
-        Some(match cmd {
-            "unlock" => Command::Unlock(p.next()?.into()),
-            "create" => Command::Create(p.next()?.into()),
-            "add" => Command::Add {
-                service: p.next()?.into(),
-                username: p.next()?.into(),
-            },
-            "get"    => Command::Get(p.next()?.into()),
-            "rm"     => Command::Remove(p.next()?.into()),
-            "update" => Command::Update(p.next()?.into()),
-            "rename" => Command::Rename(p.next()?.into()),
-            "copy"   => Command::Copy(p.next()?.into()),
-            "export" => Command::Export(p.next()?.into()),
-            "import" => Command::Import(p.next()?.into()),
-            "gen"    => Command::Gen(p.next().and_then(|s| s.parse().ok())),
-            "commit" => Command::Commit,
-            "ls" | "list" => Command::List,
-            "lock"   => Command::Lock,
-            "info"   => Command::Info,
-            "drop"   => Command::Drop(p.next()?.into()),
-            "passwd" => Command::Passwd,
-            "help"   => Command::Help,
-            "clear"  => Command::Clear,
-            "exit"   => Command::Exit,
-            _ => return None,
-        })
     }
 
     fn handle_command(&mut self, cmd: Command) -> Result<()> {
@@ -220,7 +183,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             }
 
             Command::Export(path) => {
-                let path = Self::expand_path(&path);
+                let path = expand_path(&path);
                 println!(
                     "{}WARNING:{} This will write all passwords as plain text to '{}'.",
                     YELLOW, RESET, path
@@ -234,7 +197,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             }
 
             Command::Import(path) => {
-                let path = Self::expand_path(&path);
+                let path = expand_path(&path);
                 let count = self.engine.import(&path)?;
                 if count > 0 {
                     println!(
@@ -408,17 +371,6 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
         matches!(input.trim(), "y" | "Y")
     }
 
-    /// Expands a leading `~` to the user's home directory.
-    fn expand_path(path: &str) -> String {
-        if path.starts_with("~/") || path == "~" {
-            if let Some(home) = std::env::var_os("HOME") {
-                let home = home.to_string_lossy();
-                return format!("{}{}", home, &path[1..]);
-            }
-        }
-        path.to_string()
-    }
-
     fn print_help() {
         println!(
             r#"
@@ -445,4 +397,15 @@ exit                 Exit (prompts if unsaved changes)
 "#
         );
     }
+}
+
+/// Expands a leading `~` to the user's home directory.
+pub(crate) fn expand_path(path: &str) -> String {
+    if path.starts_with("~/") || path == "~" {
+        if let Some(home) = std::env::var_os("HOME") {
+            let home = home.to_string_lossy();
+            return format!("{}{}", home, &path[1..]);
+        }
+    }
+    path.to_string()
 }

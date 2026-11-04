@@ -149,3 +149,4 @@ aws,admin,super_secure!
 
 - [Architecture](docs/ARCHITECTURE.md) — module design, data flow, hexagonal pattern
 - [Security Model](docs/SECURITY.md) — cryptographic choices, threat model, limitations
+- [Testing](docs/TESTING.md) — test layout, how to run it, conventions

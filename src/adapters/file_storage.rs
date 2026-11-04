@@ -17,8 +17,11 @@ pub struct FileStorage {
 impl FileStorage {
     pub fn new() -> Self {
         let home = dirs_2::home_dir().expect("Error: Could not found home dir!");
-        let base_path = home.join(".vault");
+        Self::with_base_path(home.join(".vault"))
+    }
 
+    /// Stores vaults under `base_path` instead of `~/.vault`.
+    pub fn with_base_path(base_path: PathBuf) -> Self {
         // Complete path
         let path = base_path.join("default.vault");
 
