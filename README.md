@@ -96,7 +96,7 @@ vault[locked]>
 | `export` | `<path>` | Export entries to a CSV file (**Warning: Plaintext!**) |
 | `import` | `<path>` | Import entries from a CSV file (merges new services) |
 | **CLI** |
-| `clear` | — | Clear the terminal screen |
+| `clear` | — | Clear the screen and the scrollback (hides passwords shown by `get`) |
 | `help` | — | Print help |
 | `exit` | — | Exit (prompts to commit if there are unsaved changes) |
 

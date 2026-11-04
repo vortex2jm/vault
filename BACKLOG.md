@@ -30,7 +30,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 - [ ] 🟠 **B9** Empty or weak master passwords are accepted (`create`, `passwd`).
 - [x] 🟡 **B10** `gen` has no upper bound: `gen 99999999999` aborts the process and loses uncommitted changes.
 - [ ] 🟡 **B11** Incomplete zeroization: old password dropped on `update`, removed entry dropped on `rm`, no wipe on exit without `lock`, `serialize_into` reallocations, `zeroize` features of `argon2`/`aes-gcm` off, first password leaked when the second prompt fails, `Entry` derives `Debug`.
-- [ ] 🟡 **B12** `clear` doesn't clear the scrollback (`\x1b[3J`), so passwords shown by `get` stay in the terminal history.
+- [x] 🟡 **B12** `clear` doesn't clear the scrollback (`\x1b[3J`), so passwords shown by `get` stay in the terminal history.
 - [ ] 🟡 **B13** Docs out of date: MSRV is 1.88 (let chains), placeholder clone URL, Wayland and `0o600` claims, missing ports/operations/dependencies, nonce birthday bound, zeroization and crash-safety claims. Add a warning against round-tripping CSV exports through spreadsheets (they drop leading zeros).
 - [ ] 🟡 **B15** Dependencies: replace `dirs-2` with `std::env::home_dir`; turn off `arboard` default features (they pull `image`, `png`, `tiff`).
 

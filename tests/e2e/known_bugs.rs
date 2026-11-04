@@ -22,14 +22,3 @@ fn b4_arrow_keys_must_edit_the_update_prompt() {
     assert!(out.contains("user: boXb"), "{out}");
     s.exit_discarding();
 }
-
-#[test]
-#[ignore = "B12: clear leaves the scrollback, and the passwords shown by get, in place"]
-fn b12_clear_must_also_clear_the_scrollback() {
-    let home = TempDir::new();
-    let mut s = Session::start(home.path());
-    s.command("clear");
-    s.output();
-    assert!(s.raw().windows(4).any(|w| w == b"\x1b[3J"));
-    s.exit();
-}

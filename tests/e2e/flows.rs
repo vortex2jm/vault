@@ -181,6 +181,24 @@ fn gen_rejects_lengths_out_of_range_without_crashing() {
 }
 
 #[test]
+fn clear_erases_the_screen_and_the_scrollback() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.command("clear");
+    s.output();
+    let raw = s.raw();
+    // 3J matters most: it removes passwords shown by `get` from the scrollback.
+    for sequence in [b"\x1b[2J".as_slice(), b"\x1b[3J"] {
+        assert!(
+            raw.windows(sequence.len()).any(|w| w == sequence),
+            "missing {:?}",
+            String::from_utf8_lossy(sequence)
+        );
+    }
+    s.exit();
+}
+
+#[test]
 fn unknown_commands_show_a_hint() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());

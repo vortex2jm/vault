@@ -276,7 +276,9 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             }
 
             Command::Clear => {
-                print!("\x1b[2J\x1b[H");
+                // Home, erase the screen (2J) and the scrollback (3J): without
+                // 3J, passwords shown by `get` stay one scroll away.
+                print!("\x1b[H\x1b[2J\x1b[3J");
                 io::stdout().flush().ok();
             }
 
@@ -391,7 +393,7 @@ info                 Show vault info
 ls                   List vaults (locked) or entries (unlocked)
 export <path>        Export entries to CSV (plaintext!)
 import <path>        Import entries from CSV file
-clear                Clear terminal
+clear                Clear the screen and the scrollback
 help                 Show this help
 exit                 Exit (prompts if unsaved changes)
 "#
