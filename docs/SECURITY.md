@@ -41,20 +41,21 @@ The AEAD tag provides **integrity and authenticity** guarantees: any tampering w
 create/unlock
     │
     ▼ Argon2id(password, salt) → key: [u8; 32]
-    │                            stored in AesGcmCrypto.key (Option<[u8;32]>)
+    │                            derived in place into AesGcmCrypto.key
     │
     ├──► commit: key used in encrypt(), nonce refreshed each time
     │
-    └──► lock / process exit:
-              ZeroizeOnDrop fires → key bytes overwritten with 0x00 in memory
-              entries: BTreeMap also zeroized via Zeroize derive on Entry
+    ├──► lock: reset() overwrites the key with 0x00 in place;
+    │          entries are zeroized via the Zeroize derive on Entry
+    │
+    └──► process exit: ZeroizeOnDrop overwrites the key with 0x00
 ```
 
 ### Key Material Handling
 
 - The raw key **never leaves the process** — it is not written to disk, logged, or transmitted.
 - `AesGcmCrypto` derives `ZeroizeOnDrop` — the key is overwritten when the struct is dropped.
-- `reset()` explicitly zeroizes the key without dropping the struct (used when `unlock` fails, to avoid leaving a derived-but-wrong key in memory).
+- `reset()` overwrites the key in place without dropping the struct. It runs on `lock` and when `unlock` fails, so no key (right or wrong) stays in memory. The key lives in a plain array rather than an `Option`, because `Option::take()` would copy it out and leave the original bytes behind.
 - Entries derive `Zeroize` — on `lock()`, every entry is explicitly zeroized before the map is cleared.
 - Passwords read from stdin via `rpassword` are held in `String` and zeroized (via `str.zeroize()`) immediately after use in the CLI layer.
 

@@ -7,47 +7,62 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::domain::{errors::CryptoError, ports::CryptoPort};
 
+/// AES-256-GCM with a key derived by Argon2id.
+///
+/// The key lives in a fixed array that is wiped in place; `has_key` says
+/// whether it currently holds one. An `Option<[u8; 32]>` would not do:
+/// `take()` copies the bytes out and leaves the original ones behind.
 #[derive(ZeroizeOnDrop)]
 pub struct AesGcmCrypto {
-    key: Option<[u8; 32]>,
+    key: [u8; 32],
+    has_key: bool,
 }
 
 impl AesGcmCrypto {
     pub fn new() -> Self {
-        Self { key: None }
+        Self {
+            key: [0; 32],
+            has_key: false,
+        }
     }
 
-    fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
-        let mut output_key = [0u8; 32];
-        if Argon2::default()
-            .hash_password_into(password.as_bytes(), salt, &mut output_key)
-            .is_err()
-        {
-            // Zeroize even the partial key material before returning the error.
-            output_key.zeroize();
-            return Err(CryptoError::KeyDerivationError);
+    /// The current key. A reference, so the key bytes are never copied.
+    fn key(&self) -> Result<&[u8; 32], CryptoError> {
+        if self.has_key {
+            Ok(&self.key)
+        } else {
+            Err(CryptoError::NotInitialized)
         }
-        Ok(output_key)
+    }
+
+    /// Derives the key for `password` and `salt` into `out`, wiping `out` if
+    /// the derivation fails.
+    fn derive_into(password: &str, salt: &[u8], out: &mut [u8; 32]) -> Result<(), CryptoError> {
+        Argon2::default()
+            .hash_password_into(password.as_bytes(), salt, out)
+            .map_err(|_| {
+                out.zeroize();
+                CryptoError::KeyDerivationError
+            })
     }
 }
 
 impl CryptoPort for AesGcmCrypto {
     fn init(&mut self, password: &str, salt: &[u8]) -> Result<(), CryptoError> {
-        self.key = Some(Self::derive_key(password, salt)?);
+        self.reset();
+        // Derived straight into the struct, so the key never sits in a temporary.
+        Self::derive_into(password, salt, &mut self.key)?;
+        self.has_key = true;
         Ok(())
     }
 
     fn reset(&mut self) {
-        if let Some(mut k) = self.key.take() {
-            k.zeroize();
-        }
+        self.key.zeroize();
+        self.has_key = false;
     }
 
     fn encrypt(&self, plaintext: &[u8]) -> Result<(Vec<u8>, [u8; 12]), CryptoError> {
-        // Use as_ref() + from_slice() to avoid copying the key bytes onto the stack
-        // (ok_or() on a Copy type would silently duplicate the key material).
-        let key_bytes = self.key.as_ref().ok_or(CryptoError::NotInitialized)?;
-        let key = Key::<Aes256Gcm>::from_slice(key_bytes);
+        let key = Key::<Aes256Gcm>::from_slice(self.key()?);
         let cipher = Aes256Gcm::new(key);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let ciphertext = cipher
@@ -57,9 +72,7 @@ impl CryptoPort for AesGcmCrypto {
     }
 
     fn decrypt(&self, ciphertext: &[u8], nonce: &[u8]) -> Result<Vec<u8>, CryptoError> {
-        // Same as encrypt: use as_ref() + from_slice() to avoid a key copy on the stack.
-        let key_bytes = self.key.as_ref().ok_or(CryptoError::NotInitialized)?;
-        let key = Key::<Aes256Gcm>::from_slice(key_bytes);
+        let key = Key::<Aes256Gcm>::from_slice(self.key()?);
         let cipher = Aes256Gcm::new(key);
         let nonce_array: [u8; 12] = nonce.try_into().map_err(|_| CryptoError::InvalidNonce)?;
         let plaintext = cipher
@@ -92,13 +105,12 @@ impl CryptoPort for AesGcmCrypto {
     }
 
     fn verify_password(&self, password: &str, salt: &[u8]) -> bool {
-        match (Self::derive_key(password, salt), &self.key) {
-            (Ok(mut derived), Some(current)) => {
-                let matches = &derived == current;
-                derived.zeroize();
-                matches
-            }
-            _ => false,
-        }
+        let Ok(current) = self.key() else {
+            return false;
+        };
+        let mut derived = [0u8; 32];
+        let matches = Self::derive_into(password, salt, &mut derived).is_ok() && &derived == current;
+        derived.zeroize();
+        matches
     }
 }

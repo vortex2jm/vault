@@ -1,5 +1,7 @@
 //! `AesGcmCrypto`: key derivation, AES-256-GCM and the password generator.
 
+use argon2::Argon2;
+
 use crate::{
     adapters::aes_crypto::AesGcmCrypto,
     domain::{errors::CryptoError, ports::CryptoPort},
@@ -11,6 +13,36 @@ fn ready(password: &str) -> AesGcmCrypto {
     let mut crypto = AesGcmCrypto::new();
     crypto.init(password, &SALT).unwrap();
     crypto
+}
+
+/// The struct's bytes, as a memory dump would show them.
+fn memory_of(crypto: &AesGcmCrypto) -> &[u8] {
+    // Only sound while every byte is initialised: 32 key bytes and a bool,
+    // no padding. Revisit this helper if the layout changes.
+    assert_eq!(size_of::<AesGcmCrypto>(), 33, "AesGcmCrypto layout changed");
+    // SAFETY: the struct is plain initialised bytes (checked above).
+    unsafe {
+        std::slice::from_raw_parts(
+            (crypto as *const AesGcmCrypto).cast::<u8>(),
+            size_of::<AesGcmCrypto>(),
+        )
+    }
+}
+
+#[test]
+fn reset_wipes_the_key_from_memory() {
+    let mut key = [0u8; 32];
+    Argon2::default().hash_password_into(b"pw", &SALT, &mut key).unwrap();
+    let holds_key = |crypto: &AesGcmCrypto| memory_of(crypto).windows(32).any(|w| w == key);
+
+    let mut crypto = ready("pw");
+    assert!(holds_key(&crypto));
+    crypto.reset();
+    assert!(!holds_key(&crypto));
+
+    // It can be initialised again afterwards.
+    crypto.init("pw", &SALT).unwrap();
+    assert!(holds_key(&crypto));
 }
 
 #[test]

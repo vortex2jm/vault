@@ -89,8 +89,8 @@ Implements `CryptoPort` using:
 - **`Argon2::default()`** (Argon2id) for key derivation from password + salt
 - **`Aes256Gcm`** from the `aes-gcm` crate for AEAD encryption
 - A fresh **random nonce** (via `OsRng`) on every `encrypt` call
-- `ZeroizeOnDrop` on the key field — automatically wiped when dropped
-- `reset()` — explicitly zeroizes the key without dropping the struct (used after failed unlock)
+- `ZeroizeOnDrop` on the struct — the key is wiped when it is dropped
+- `reset()` — wipes the key in place without dropping the struct (on `lock` and after a failed unlock)
 
 ---
 

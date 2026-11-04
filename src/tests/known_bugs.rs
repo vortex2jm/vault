@@ -6,9 +6,6 @@
 //!
 //! Where several fixes are acceptable (e.g. refusing an operation instead of
 //! handling it), the test accepts any of them and checks the invariant.
-//!
-//! B5 (`reset()` leaves the key bytes in memory) has no test: observing it
-//! means reading uninitialised memory.
 
 use std::fs;
 
