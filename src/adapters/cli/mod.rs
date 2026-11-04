@@ -167,7 +167,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
 
             Command::Gen(length) => {
                 let len = length.unwrap_or(20);
-                let pw = self.engine.gen_password(len);
+                let pw = self.engine.gen_password(len)?;
                 println!("Generated: {}{}{}\n", CYAN, pw, RESET);
             }
 
@@ -386,7 +386,7 @@ update <svc>         Update username/password of entry
 rm <svc>             Remove entry
 commit               Save changes to disk
 rename <new>         Rename current vault
-gen [length]         Generate random password (default: 20 chars)
+gen [length]         Generate random password (8-256 chars, default: 20)
 info                 Show vault info
 ls                   List vaults (locked) or entries (unlocked)
 export <path>        Export entries to CSV (plaintext!)

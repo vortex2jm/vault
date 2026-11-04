@@ -169,6 +169,18 @@ fn gen_prints_a_password_of_the_requested_length() {
 }
 
 #[test]
+fn gen_rejects_lengths_out_of_range_without_crashing() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    for length in ["4", "99999999999"] {
+        s.command(&format!("gen {length}"));
+        let out = s.output();
+        assert!(out.contains("Error: Password length must be between 8 and 256"), "{out}");
+    }
+    s.exit();
+}
+
+#[test]
 fn unknown_commands_show_a_hint() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());

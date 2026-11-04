@@ -87,7 +87,7 @@ vault[locked]>
 | `copy` | `<service>` | Copy a password directly to the OS clipboard |
 | `update` | `<service>` | Update username/password of an entry (leave blank to keep current) |
 | `rm` | `<service>` | Remove a credential entry |
-| `gen` | `[length]` | Generate a random strong password (default: 20 chars) |
+| `gen` | `[length]` | Generate a random strong password (8–256 chars, default: 20) |
 | **Data & I/O** |
 | `commit` | — | Save changes to disk |
 | `rename` | `<new_name>`| Rename the current vault file |

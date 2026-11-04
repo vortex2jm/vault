@@ -174,12 +174,3 @@ fn b9_empty_master_password_must_be_rejected() {
     let mut engine = created(&dir, "other", "pw");
     assert!(engine.change_password("pw", "").is_err());
 }
-
-#[test]
-#[ignore = "B10: gen has no upper bound"]
-fn b10_a_huge_generator_length_must_not_panic() {
-    let dir = TempDir::new();
-    let engine = engine(&dir);
-    let result = std::panic::catch_unwind(|| engine.gen_password(usize::MAX));
-    assert!(result.is_ok());
-}

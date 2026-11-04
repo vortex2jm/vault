@@ -8,6 +8,11 @@ use crate::domain::{
     ports::{CryptoPort, StoragePort},
 };
 
+/// Shortest password `gen_password` produces.
+pub const MIN_GENERATED_LENGTH: usize = 8;
+/// Longest password `gen_password` produces.
+pub const MAX_GENERATED_LENGTH: usize = 256;
+
 /// VaultEngine is the core of the application, responsible for managing vault state, entries and interactions with storage and crypto ports
 pub struct VaultEngine<S: StoragePort, C: CryptoPort> {
     storage: S,
@@ -260,9 +265,16 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         Ok(())
     }
 
-    /// Returns a cryptographically random password of `length` characters.
-    pub fn gen_password(&self, length: usize) -> String {
-        self.crypto.gen_password(length)
+    /// Returns a cryptographically random password of `length` characters,
+    /// which must be between `MIN_GENERATED_LENGTH` and `MAX_GENERATED_LENGTH`.
+    pub fn gen_password(&self, length: usize) -> Result<String, VaultError> {
+        if !(MIN_GENERATED_LENGTH..=MAX_GENERATED_LENGTH).contains(&length) {
+            return Err(VaultError::InvalidPasswordLength {
+                min: MIN_GENERATED_LENGTH,
+                max: MAX_GENERATED_LENGTH,
+            });
+        }
+        Ok(self.crypto.gen_password(length))
     }
 
     /// Returns a human-readable summary of the current vault.

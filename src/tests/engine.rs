@@ -3,7 +3,10 @@
 use std::fs;
 
 use super::support::{TempDir, created, engine, path_str};
-use crate::domain::errors::VaultError;
+use crate::{
+    application::engine::{MAX_GENERATED_LENGTH, MIN_GENERATED_LENGTH},
+    domain::errors::VaultError,
+};
 
 #[test]
 fn create_leaves_the_vault_unlocked_and_on_disk() {
@@ -269,6 +272,22 @@ fn renaming_a_vault_to_its_own_name_changes_nothing() {
     engine.rename_vault("personal").unwrap();
     assert_eq!(engine.current_vault().as_deref(), Some("personal"));
     assert!(dir.file("personal.vault").exists());
+}
+
+#[test]
+fn gen_password_only_accepts_sensible_lengths() {
+    let dir = TempDir::new();
+    let engine = engine(&dir);
+    for length in [MIN_GENERATED_LENGTH, 20, MAX_GENERATED_LENGTH] {
+        assert_eq!(engine.gen_password(length).unwrap().len(), length);
+    }
+    // A huge length used to abort the whole process (B10).
+    for length in [0, MIN_GENERATED_LENGTH - 1, MAX_GENERATED_LENGTH + 1, usize::MAX] {
+        assert!(
+            matches!(engine.gen_password(length), Err(VaultError::InvalidPasswordLength { .. })),
+            "{length}"
+        );
+    }
 }
 
 #[test]
