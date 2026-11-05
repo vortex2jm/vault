@@ -2,7 +2,7 @@
 
 use std::{cell::Cell, collections::BTreeMap, fs, rc::Rc};
 
-use super::support::{CHEAP, TempDir, created, engine, engine_with_kdf, path_str};
+use super::support::{CHEAP, Engine, TempDir, created, engine, engine_with_kdf, path_str};
 use crate::{
     adapters::{aes_crypto::AesGcmCrypto, file_storage::FileStorage},
     application::engine::{
@@ -546,6 +546,130 @@ fn import_accepts_exports_from_before_notes() {
     assert_eq!(engine.import(path_str(&csv)).unwrap(), 1);
     let entry = engine.get("github").unwrap();
     assert_eq!((entry.passwd.as_str(), entry.notes.as_str()), ("hunter2", ""));
+}
+
+/// Imports `csv` into a new vault, returning the engine and the result.
+fn import_csv(dir: &TempDir, csv: &str) -> (Engine, Result<usize, VaultError>) {
+    let file = dir.file("import.csv");
+    fs::write(&file, csv).unwrap();
+    let mut engine = created(dir, "personal", "password");
+    let result = engine.import(path_str(&file));
+    (engine, result)
+}
+
+/// The message of an `Import` error, or a panic.
+fn import_error(result: Result<usize, VaultError>) -> String {
+    match result {
+        Err(VaultError::Import(message)) => message,
+        other => panic!("expected an import error, got {other:?}"),
+    }
+}
+
+#[test]
+fn import_finds_the_columns_by_name() {
+    // Any order, any case; columns it doesn't know are ignored.
+    let dir = TempDir::new();
+    let (engine, result) = import_csv(
+        &dir,
+        "Notes, PASSWORD,url,Service,username\n2FA on,hunter2,https://github.com,github,alice\n",
+    );
+    assert_eq!(result.unwrap(), 1);
+    let entry = engine.get("github").unwrap();
+    assert_eq!(
+        (entry.username.as_str(), entry.passwd.as_str(), entry.notes.as_str()),
+        ("alice", "hunter2", "2FA on")
+    );
+}
+
+#[test]
+fn the_csv_example_in_the_readme_imports() {
+    let readme = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"));
+    let example = readme.split("```csv\n").nth(1).and_then(|s| s.split("```").next());
+    let dir = TempDir::new();
+    let (engine, result) = import_csv(&dir, example.expect("no csv block in README.md"));
+    assert_eq!(result.unwrap(), 2);
+    assert_eq!(engine.get("aws").unwrap().passwd, "super,secure!");
+}
+
+#[test]
+fn import_refuses_a_header_without_the_columns_it_needs() {
+    // Before, columns were taken by position: a browser export put the URL
+    // in the username and the username in the password (B6).
+    let dir = TempDir::new();
+    let (engine, result) = import_csv(
+        &dir,
+        "name,url,username,password,note\ngithub,https://github.com,alice,hunter2,\n",
+    );
+    assert!(import_error(result).contains("no 'service' column"));
+    assert!(engine.get_entries().unwrap().is_empty());
+
+    let (_, result) = import_csv(&TempDir::new(), "service,username,password,Password\na,u,p,q\n");
+    assert!(import_error(result).contains("more than one 'password' column"));
+}
+
+#[test]
+fn a_failed_import_adds_nothing() {
+    // Before, the rows above the bad one stayed, and weren't even marked as
+    // changes (B6).
+    let cases: [(&[u8], &str); 5] = [
+        (b"service,username,password\na,u,p\nb,u,p\nbroken-row\n", "line 4: expected 3 fields"),
+        // An unquoted comma in a password shifts the fields.
+        (
+            b"service,username,password\na,u,p\nb,u,pa,ss\n",
+            "line 3: expected 3 fields, as in the header, but found 4",
+        ),
+        (
+            b"service,username,password\na,u,p\nMy Bank,u,p\n",
+            "line 3: service names can't be empty or contain spaces ('My Bank')",
+        ),
+        (b"service,username,password\na,u,p\n,u,p\n", "line 3: service names"),
+        (b"service,username,password\na,u,p\nb,u,\xff\n", "line 3 isn't valid UTF-8"),
+    ];
+    for (csv, expected) in cases {
+        let dir = TempDir::new();
+        let file = dir.file("import.csv");
+        fs::write(&file, csv).unwrap();
+        let mut engine = created(&dir, "personal", "password");
+        let message = import_error(engine.import(path_str(&file)));
+        let csv = String::from_utf8_lossy(csv);
+        assert!(message.contains(expected), "{message:?} for {csv:?}");
+        assert!(engine.get_entries().unwrap().is_empty(), "{csv:?}");
+        assert!(!engine.is_dirty(), "{csv:?}");
+    }
+}
+
+#[test]
+fn import_keeps_the_first_row_of_a_repeated_service() {
+    let dir = TempDir::new();
+    let (engine, result) = import_csv(
+        &dir,
+        "service,username,password\n github ,alice,first\ngithub,bob,second\n",
+    );
+    assert_eq!(result.unwrap(), 1);
+    // Spaces around a name are trimmed; a password is taken as it is.
+    assert_eq!(engine.get("github").unwrap().passwd, "first");
+}
+
+#[test]
+fn import_reads_files_that_start_with_a_byte_order_mark() {
+    // Spreadsheets add one when saving as "CSV UTF-8".
+    let dir = TempDir::new();
+    let (engine, result) = import_csv(&dir, "\u{feff}service,username,password\nbank,0042,0099\n");
+    assert_eq!(result.unwrap(), 1);
+    assert_eq!(engine.get("bank").unwrap().username, "0042");
+}
+
+#[test]
+fn add_refuses_service_names_commands_cannot_reach() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "personal", "password");
+    for name in ["", "My Bank", "tab\there"] {
+        assert!(
+            matches!(engine.add(name, "u", "p"), Err(VaultError::InvalidServiceName(_))),
+            "{name:?}"
+        );
+    }
+    assert!(engine.get_entries().unwrap().is_empty());
 }
 
 #[test]

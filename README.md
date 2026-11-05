@@ -100,7 +100,7 @@ vault[locked]>
 | `ls`/`list`| — | List vaults (when locked) or entries (when unlocked) |
 | `info` | — | Show the vault name, entry count and key strength |
 | `export` | `<path>` | Export entries to a CSV file (**Warning: Plaintext!**). Created `0600`; never overwrites an existing file |
-| `import` | `<path>` | Import entries from a CSV file (merges new services) |
+| `import` | `<path>` | Import entries from a CSV file (merges new services; all or nothing, see below) |
 | **CLI** |
 | `clear` | — | Clear the screen and the scrollback (hides passwords shown by `get`) |
 | `help` | — | Print help |
@@ -144,15 +144,20 @@ Vaults written by older versions (v0 to v2) still open. On unlock they are rewri
 
 ## CSV Export/Import Format
 
-The `export` and `import` commands use standard RFC 4180 CSV files with the following header:
+The `export` and `import` commands use standard RFC 4180 CSV files with a header row:
 
 ```csv
 service,username,password,notes
-github,myuser,mysecret123
-aws,admin,super_secure!
+github,myuser,mysecret123,
+aws,admin,"super,secure!",root account
 ```
 
-*Note: Importing merges entries. If a service already exists in the vault, the imported row is skipped. Files without the `notes` column (exports from older versions) import with empty notes. The password history is not exported.*
+- `import` finds the columns by name, in any order and any case: `service`, `username` and `password` are required, and `notes` is optional (exports from older versions don't have it). Other columns are ignored.
+- Every row has as many fields as the header. A field with a comma or a quote must be quoted, as in the `aws` row above.
+- Service names can't be empty or contain spaces, since commands take them as one word.
+- Import is all or nothing: if a row is invalid, the error names its line and no entry is added.
+- Importing merges entries: if a service already exists in the vault, or appears twice in the file, the first version is kept and the other row is skipped.
+- The password history is not exported.
 
 ---
 

@@ -23,6 +23,12 @@ pub enum VaultError {
     #[error("Vault already exists")]
     VaultAlreadyExists,
 
+    #[error("Invalid service name '{0}': it can't be empty or contain spaces")]
+    InvalidServiceName(String),
+
+    #[error("Nothing was imported: {0}")]
+    Import(String),
+
     #[error("Password length must be between {min} and {max}")]
     InvalidPasswordLength { min: usize, max: usize },
 

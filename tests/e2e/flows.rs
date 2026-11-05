@@ -1,5 +1,7 @@
 //! Everyday flows through the CLI.
 
+use std::fs;
+
 use crate::support::{CTRL_U, MENU, Session, TempDir};
 
 #[test]
@@ -360,6 +362,23 @@ fn export_and_import_between_vaults() {
     s.command("get github");
     assert!(s.output().contains("pass: hunter2"));
     s.exit_discarding();
+}
+
+#[test]
+fn a_bad_csv_line_stops_the_import_and_says_where() {
+    let home = TempDir::new();
+    fs::write(
+        home.file("in.csv"),
+        "service,username,password\ngithub,alice,hunter2\nbank,bob,pa,ss\n",
+    )
+    .unwrap();
+    let mut s = Session::start(home.path());
+    s.create("personal", "password");
+    s.command("import ~/in.csv");
+    s.expect("Nothing was imported: line 3: expected 3 fields, as in the header, but found 4");
+    s.command("ls");
+    assert!(!s.output().contains("github"), "the line above the bad one was imported");
+    s.exit();
 }
 
 #[test]

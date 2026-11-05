@@ -24,7 +24,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 - [x] 🔴 **B3** A vault whose payload exceeds 4 MiB commits but never opens again (wincode's default read limit). Fix together with E1.
 - [x] 🟠 **B4** Sub-prompts (`update` username, confirmations, exit menu) use raw `read_line`: arrow keys are stored in the field as escape sequences.
 - [x] 🟠 **B5** `AesGcmCrypto::reset()` zeroizes a copy of the key and leaves the original bytes in place.
-- [ ] 🟠 **B6** CSV import maps columns by position (ignores the header), is not atomic (an error mid-file leaves partial entries with `dirty = false`) and accepts service names with spaces that the CLI can't reach.
+- [x] 🟠 **B6** CSV import maps columns by position (ignores the header), is not atomic (an error mid-file leaves partial entries with `dirty = false`) and accepts service names with spaces that the CLI can't reach.
 - [x] 🟠 **B7** Permissions: CSV export follows the umask and overwrites existing files; `~/.vault` isn't `0700`. (Vaults created before the `0600` change now become `0600` on their next commit, thanks to B2's atomic save.)
 - [x] 🟠 **B8** After `passwd`, the `.bkp` still opens with the old password until the next commit.
 - [x] 🟠 **B9** Empty or weak master passwords are accepted (`create`, `passwd`).

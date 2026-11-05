@@ -1,8 +1,12 @@
-use std::{collections::BTreeMap, fs::OpenOptions, io::ErrorKind};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs::OpenOptions,
+    io::ErrorKind,
+};
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::domain::{
     errors::{StorageError, VaultError},
@@ -80,6 +84,15 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             return Err(VaultError::MasterPasswordTooShort {
                 min: MIN_MASTER_PASSWORD_LENGTH,
             });
+        }
+        Ok(())
+    }
+
+    /// Commands take a service name as one word: an empty one, or one with
+    /// spaces, could never be typed.
+    fn check_service_name(name: &str) -> Result<(), VaultError> {
+        if name.is_empty() || name.chars().any(char::is_whitespace) {
+            return Err(VaultError::InvalidServiceName(name.to_string()));
         }
         Ok(())
     }
@@ -303,6 +316,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             return Err(VaultError::Locked);
         }
 
+        Self::check_service_name(service)?;
         // Check for duplicate before allocating the Entry.
         if self.entries.contains_key(service) {
             return Err(VaultError::EntryExists);
@@ -456,40 +470,56 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         Ok(())
     }
 
-    /// Imports entries from a CSV file at `path`. The file must have a header row
-    /// with columns: service, username, password. Skips entries whose service name
-    /// already exists. Returns the count of newly added entries.
+    /// Imports the entries of a CSV file with a header row. Columns are found
+    /// by name, in any order and any case: `service`, `username`, `password`
+    /// and, optionally, `notes`; other columns are ignored. A service already
+    /// in the vault, or repeated in the file, keeps its first version.
+    ///
+    /// All or nothing: the whole file is read before anything is added, and
+    /// an error names the line at fault. Returns how many entries were added.
     pub fn import(&mut self, path: &str) -> Result<usize, VaultError> {
         if self.is_locked() {
             return Err(VaultError::Locked);
         }
 
-        let mut rdr = csv::Reader::from_path(path).map_err(|e| match e.into_kind() {
-            csv::ErrorKind::Io(io) => VaultError::Storage(StorageError::Io(io)),
-            _ => VaultError::Serialization,
-        })?;
+        let mut rdr = csv::Reader::from_path(path).map_err(csv_error)?;
+        let columns = CsvColumns::find(rdr.headers().map_err(csv_error)?)?;
 
-        let mut count = 0;
-        for result in rdr.records() {
-            let record = result.map_err(|_| VaultError::Serialization)?;
-            let service  = record.get(0).ok_or(VaultError::Serialization)?.to_string();
-            let username = record.get(1).ok_or(VaultError::Serialization)?.to_string();
-            let password = record.get(2).ok_or(VaultError::Serialization)?.to_string();
-            // Optional: exports made before notes existed have three columns.
-            let notes = record.get(3).unwrap_or_default().to_string();
+        // Wiped on the way out, so a failed import leaves no secrets behind.
+        let mut read: Zeroizing<Vec<Entry>> = Zeroizing::new(Vec::new());
+        let mut seen = BTreeSet::new();
+        for record in rdr.records() {
+            let record = record.map_err(csv_error)?;
+            let line = record.position().map_or(0, |p| p.line());
+            let field = |column: usize| record.get(column).unwrap_or_default();
 
-            if let std::collections::btree_map::Entry::Vacant(e) = self.entries.entry(service.clone()) {
-                let mut entry = Entry::new(service, username, password);
-                entry.notes = notes;
-                e.insert(entry);
-                count += 1;
+            let service = field(columns.service).trim();
+            if Self::check_service_name(service).is_err() {
+                return Err(VaultError::Import(format!(
+                    "line {line}: service names can't be empty or contain spaces ('{service}')"
+                )));
             }
+            if self.entries.contains_key(service) || !seen.insert(service.to_string()) {
+                continue;
+            }
+            let mut entry = Entry::new(
+                service.to_string(),
+                field(columns.username).to_string(),
+                field(columns.password).to_string(),
+            );
+            if let Some(notes) = columns.notes {
+                entry.notes = field(notes).to_string();
+            }
+            read.push(entry);
         }
 
+        let count = read.len();
+        for entry in read.drain(..) {
+            self.entries.insert(entry.service.clone(), entry);
+        }
         if count > 0 {
             self.dirty = true;
         }
-
         Ok(count)
     }
 
@@ -544,5 +574,58 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         // should open with it anymore.
         self.commit()
             .map_err(|e| VaultError::StaleBackup(e.to_string()))
+    }
+}
+
+/// Where the fields of an imported CSV are, found by header name.
+struct CsvColumns {
+    service: usize,
+    username: usize,
+    password: usize,
+    notes: Option<usize>,
+}
+
+impl CsvColumns {
+    fn find(header: &csv::StringRecord) -> Result<Self, VaultError> {
+        let column = |name: &str| {
+            let mut found = header
+                .iter()
+                .enumerate()
+                .filter(|(_, title)| title.trim().eq_ignore_ascii_case(name))
+                .map(|(index, _)| index);
+            match (found.next(), found.next()) {
+                (Some(_), Some(_)) => Err(VaultError::Import(format!(
+                    "the header has more than one '{name}' column"
+                ))),
+                (index, _) => Ok(index),
+            }
+        };
+        let required = |name: &str| {
+            column(name)?.ok_or_else(|| {
+                VaultError::Import(format!(
+                    "the header has no '{name}' column (expected service, username, \
+                     password and, optionally, notes)"
+                ))
+            })
+        };
+        Ok(Self {
+            service: required("service")?,
+            username: required("username")?,
+            password: required("password")?,
+            notes: column("notes")?,
+        })
+    }
+}
+
+/// A CSV reading error, naming the line at fault.
+fn csv_error(e: csv::Error) -> VaultError {
+    let line = e.position().map_or(0, |p| p.line());
+    match e.into_kind() {
+        csv::ErrorKind::Io(io) => VaultError::Storage(StorageError::Io(io)),
+        csv::ErrorKind::UnequalLengths { expected_len, len, .. } => VaultError::Import(format!(
+            "line {line}: expected {expected_len} fields, as in the header, but found {len}"
+        )),
+        csv::ErrorKind::Utf8 { .. } => VaultError::Import(format!("line {line} isn't valid UTF-8")),
+        _ => VaultError::Serialization,
     }
 }
