@@ -26,6 +26,9 @@ pub enum VaultError {
     #[error("Password length must be between {min} and {max}")]
     InvalidPasswordLength { min: usize, max: usize },
 
+    #[error("The master password must have at least {min} characters")]
+    MasterPasswordTooShort { min: usize },
+
     #[error("{0} already exists: choose another file")]
     FileExists(String),
 

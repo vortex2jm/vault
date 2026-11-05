@@ -19,6 +19,8 @@ Vault uses **Argon2id** (via the `argon2` crate) to derive a 256-bit encryption 
 
 Argon2id is **memory-hard**, meaning brute-force attacks are significantly more expensive than with bcrypt or PBKDF2. The salt is unique per vault, and both the salt and the parameters are stored in the vault's header, so the default cost can be raised later without breaking existing vaults.
 
+New master passwords (`create`, `passwd`) must have at least 8 characters, counted as characters rather than bytes. There are no composition rules (digits, symbols), following NIST SP 800-63B: what slows down an offline guess is the length, multiplied by the cost of each attempt. Vaults whose password predates the rule still unlock, and `passwd` can lengthen it.
+
 Vaults written before format v1 used the `argon2` crate's defaults at the time (19 MiB, 2 passes, about 10× cheaper to attack). When such a vault, or any vault keyed below the current cost, is unlocked, it is rewritten right away with a fresh salt and a key at the current cost. Costs are never lowered this way.
 
 ### Symmetric Encryption — AES-256-GCM
@@ -112,7 +114,7 @@ A crash or power loss at any point leaves each file either in its old state or i
 
 | Threat | Mitigation |
 |--------|------------|
-| Offline brute force on stolen vault file | Argon2id key derivation makes each attempt expensive |
+| Offline brute force on stolen vault file | Argon2id key derivation makes each attempt expensive; new master passwords need at least 8 characters |
 | Ciphertext tampering | AES-GCM authentication tag — decryption fails on any modification |
 | Header tampering (cost, salt, version) | The header is AES-GCM associated data; costs from a file are bounded before any key is derived |
 | Secrets lingering in RAM after lock | `ZeroizeOnDrop` on key, `Zeroize` on entries, explicit zeroize on passwords |

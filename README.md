@@ -80,10 +80,10 @@ vault[locked]>
 | Command | Arguments | Description |
 |---------|-----------|-------------|
 | **Core** |
-| `create` | `<name>` | Create a new vault (asks for password twice) |
+| `create` | `<name>` | Create a new vault (asks for the password twice; at least 8 characters) |
 | `unlock` | `<name>` | Unlock an existing vault |
 | `lock` | — | Lock the current vault |
-| `passwd` | — | Change the current vault's master password |
+| `passwd` | — | Change the current vault's master password (at least 8 characters) |
 | `drop` | `<name>` | Permanently delete a vault and its backup (vault must be locked) |
 | **Entries** |
 | `add` | `<service> <user>` | Add a credential entry (asks for its password and optional notes) |

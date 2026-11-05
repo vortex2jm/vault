@@ -75,7 +75,7 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 
 | Method | Description |
 |--------|-------------|
-| `create_vault(name, pw)` | Generates salt, derives key, commits empty state to disk |
+| `create_vault(name, pw)` | Checks the name and the password's length, generates salt, derives key, commits empty state to disk |
 | `unlock(name, pw)` | Loads file, derives key, decrypts entries into memory; rewrites an old-format or cheaper-keyed file at once and reports it as `Upgrade` |
 | `lock()` | Zeroizes entries, clears vault state |
 | `commit()` | Encrypts current entries, saves to disk with fresh nonce |

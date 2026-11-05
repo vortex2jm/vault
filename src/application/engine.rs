@@ -15,6 +15,9 @@ use crate::domain::{
 pub const MIN_GENERATED_LENGTH: usize = 8;
 /// Longest password `gen_password` produces.
 pub const MAX_GENERATED_LENGTH: usize = 256;
+/// Shortest master password a new vault or `change_password` accepts, in
+/// characters. Vaults whose password predates the rule still unlock.
+pub const MIN_MASTER_PASSWORD_LENGTH: usize = 8;
 
 /// What `unlock` did to the vault file besides opening it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +73,17 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         Ok(())
     }
 
+    /// Refuses a new master password shorter than [`MIN_MASTER_PASSWORD_LENGTH`]
+    /// characters. Unlocking never checks it, so older vaults keep opening.
+    fn check_new_password(password: &str) -> Result<(), VaultError> {
+        if password.chars().count() < MIN_MASTER_PASSWORD_LENGTH {
+            return Err(VaultError::MasterPasswordTooShort {
+                min: MIN_MASTER_PASSWORD_LENGTH,
+            });
+        }
+        Ok(())
+    }
+
     /// Checks if vault is locked by checking if vault state is None
     pub fn is_locked(&self) -> bool {
         self.vault_state.is_none()
@@ -94,6 +108,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
 
         // Whitelist-validate the name before touching the filesystem.
         Self::validate_name(name)?;
+        Self::check_new_password(password)?;
 
         // Save current path so we can restore it if the vault already exists,
         // preventing storage from being left pointing at the conflicting name.
@@ -493,6 +508,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
     /// Verifies `old_password` before accepting `new_password`.
     pub fn change_password(&mut self, old_password: &str, new_password: &str) -> Result<(), VaultError> {
         let current = self.vault_state.ok_or(VaultError::Locked)?;
+        Self::check_new_password(new_password)?;
 
         // Verify the old password by re-deriving and comparing keys.
         if !self

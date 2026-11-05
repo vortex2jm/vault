@@ -9,7 +9,7 @@
 
 use std::fs;
 
-use super::support::{TempDir, created, engine, path_str};
+use super::support::{TempDir, created, path_str};
 
 #[test]
 #[ignore = "B6: CSV import maps columns by position, ignoring the header"]
@@ -48,16 +48,4 @@ fn b6_import_must_leave_a_consistent_state() {
             assert!(engine.is_dirty());
         }
     }
-}
-
-#[test]
-#[ignore = "B9: empty master passwords are accepted"]
-fn b9_empty_master_password_must_be_rejected() {
-    let dir = TempDir::new();
-    let mut engine = engine(&dir);
-    assert!(engine.create_vault("personal", "").is_err());
-    assert!(engine.is_locked());
-
-    let mut engine = created(&dir, "other", "pw");
-    assert!(engine.change_password("pw", "").is_err());
 }

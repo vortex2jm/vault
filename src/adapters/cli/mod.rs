@@ -494,10 +494,10 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
     fn print_help() {
         println!(
             r#"
-create <name>        Create vault (asks for password twice)
+create <name>        Create vault (asks for password twice, 8+ characters)
 unlock <name>        Unlock vault
 lock                 Lock vault
-passwd               Change vault master password
+passwd               Change vault master password (8+ characters)
 drop <name>          Permanently delete a vault (must be locked first)
 add <svc> <user>     Add entry (asks for its password and optional notes)
 get <svc>            Show entry (user, pass, notes)

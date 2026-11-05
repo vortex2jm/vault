@@ -9,7 +9,7 @@ use crate::support::{CTRL_C, DOWN, ESC, Session, TempDir};
 /// An unlocked vault with three entries: bank, github and gitlab.
 fn with_entries(home: &TempDir) -> Session {
     let mut s = Session::start(home.path());
-    s.create("personal", "pw");
+    s.create("personal", "password");
     s.add("bank", "bob", "s3cr3t");
     s.add("github", "alice", "hunter2");
     s.add("gitlab", "carol", "tanuki");
@@ -149,7 +149,7 @@ fn find_needs_an_unlocked_vault_with_entries() {
     let mut s = Session::start(home.path());
     s.command("find");
     assert!(s.output().contains("Error: Vault is locked"));
-    s.create("personal", "pw");
+    s.create("personal", "password");
     s.command("find");
     assert!(s.output().contains("(no entries)"));
     s.exit();

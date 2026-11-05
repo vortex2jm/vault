@@ -15,7 +15,7 @@ fn tab_completes_command_names() {
 fn tab_completes_entry_names() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
-    s.create("personal", "pw");
+    s.create("personal", "password");
     s.add("github", "alice", "hunter2");
     s.add("bank", "bob", "s3cr3t");
     s.keys(&[b"get gi".as_slice(), TAB, b"\r"].concat());
@@ -27,7 +27,7 @@ fn tab_completes_entry_names() {
 fn tab_chains_a_command_and_its_argument() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
-    s.create("personal", "pw");
+    s.create("personal", "password");
     s.add("github", "alice", "hunter2");
     // "up" + Tab → "update ", then "gi" + Tab → "update github".
     s.keys(&[b"up".as_slice(), TAB, b"gi", TAB, b"\r"].concat());
@@ -42,11 +42,11 @@ fn tab_chains_a_command_and_its_argument() {
 fn tab_completes_vault_names() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
-    s.create("personal", "pw");
+    s.create("personal", "password");
     s.command("lock");
     s.expect("Vault locked.");
     s.keys(&[b"unlock pe".as_slice(), TAB, b"\r"].concat());
-    s.answer("Vault password: ", "pw");
+    s.answer("Vault password: ", "password");
     s.expect("Vault 'personal' unlocked.");
     s.exit();
 }
@@ -60,7 +60,7 @@ fn tab_completes_file_paths() {
     )
     .unwrap();
     let mut s = Session::start(home.path());
-    s.create("personal", "pw");
+    s.create("personal", "password");
     s.keys(&[b"import ~/pass".as_slice(), TAB, b"\r"].concat());
     assert!(s.output().contains("1 entry imported"));
     s.exit_discarding();
@@ -91,7 +91,7 @@ fn left_arrow_moves_the_cursor() {
 fn arrow_keys_edit_the_update_prompt() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
-    s.create("personal", "pw");
+    s.create("personal", "password");
     s.add("site", "alice", "pw");
     s.command("update site");
     s.expect("New username (blank to keep): ");
@@ -111,7 +111,7 @@ fn arrow_keys_edit_the_update_prompt() {
 fn arrow_keys_work_in_confirmations() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
-    s.create("personal", "pw");
+    s.create("personal", "password");
     s.add("github", "alice", "hunter2");
     s.command("rm github");
     s.expect("Remove 'github'? (y/N): ");
@@ -124,7 +124,7 @@ fn arrow_keys_work_in_confirmations() {
 fn ctrl_c_cancels_an_update() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
-    s.create("personal", "pw");
+    s.create("personal", "password");
     s.add("github", "alice", "hunter2");
     s.command("update github");
     s.expect("New username (blank to keep): ");
@@ -139,7 +139,7 @@ fn ctrl_c_cancels_an_update() {
 fn tab_does_not_offer_commands_in_answers() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
-    s.create("personal", "pw");
+    s.create("personal", "password");
     s.add("github", "alice", "hunter2");
     s.command("update github");
     s.expect("New username (blank to keep): ");
