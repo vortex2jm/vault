@@ -7,7 +7,7 @@ use std::{
     fs::File,
     io::{Read, Write},
     os::{
-        fd::{FromRawFd, OwnedFd},
+        fd::{AsRawFd, FromRawFd, OwnedFd},
         unix::process::CommandExt,
     },
     path::{Path, PathBuf},
@@ -135,6 +135,34 @@ impl Session {
     pub fn send(&mut self, keys: &[u8]) {
         self.terminal.write_all(keys).unwrap();
         self.terminal.flush().unwrap();
+    }
+
+    /// Types `keys` once the program is reading keys one by one.
+    ///
+    /// The selector (dialoguer) only switches the terminal to raw mode while
+    /// it waits for a key, and draws in normal mode in between. A key typed
+    /// in that gap gets the normal-mode treatment; for Ctrl-C that means a
+    /// SIGINT that kills the program. Waiting for raw mode avoids the race.
+    pub fn key(&mut self, keys: &[u8]) {
+        self.wait_for_raw_mode();
+        self.send(keys);
+    }
+
+    /// Waits until the terminal is in raw mode: no line buffering and no
+    /// signal keys. (On Linux the master side reports the slave's mode.)
+    fn wait_for_raw_mode(&self) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            // SAFETY: `termios` is plain data that tcgetattr fills in.
+            let mut termios: libc::termios = unsafe { std::mem::zeroed() };
+            let rc = unsafe { libc::tcgetattr(self.terminal.as_raw_fd(), &mut termios) };
+            assert_eq!(rc, 0, "tcgetattr failed: {}", std::io::Error::last_os_error());
+            if termios.c_lflag & (libc::ICANON | libc::ISIG) == 0 {
+                return;
+            }
+            assert!(Instant::now() < deadline, "the program never switched to raw mode");
+            thread::sleep(Duration::from_millis(2));
+        }
     }
 
     /// Waits for `needle` in the output after everything consumed so far and

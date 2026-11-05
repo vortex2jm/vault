@@ -1,7 +1,8 @@
 //! The interactive selector (`find`): arrows, fuzzy filter, action menu.
 //!
-//! Every key waits for the redraw it causes before the next one is sent.
-//! The copy actions are left out: they would need a real clipboard.
+//! Every key waits for the redraw it causes before the next one is sent, and
+//! goes through `Session::key`, which only types once the selector is reading
+//! keys. The copy actions are left out: they would need a real clipboard.
 
 use crate::support::{CTRL_C, DOWN, ESC, Session, TempDir};
 
@@ -23,10 +24,10 @@ fn choose(s: &mut Session, service: &str, action: &str) {
     s.expect(&format!("? {service} ›"));
     s.expect(&format!("❯ {}", ACTIONS[0]));
     for next in &ACTIONS[1..=target] {
-        s.send(DOWN);
+        s.key(DOWN);
         s.expect(&format!("❯ {next}"));
     }
-    s.send(b"\r");
+    s.key(b"\r");
 }
 
 #[test]
@@ -35,9 +36,9 @@ fn arrows_pick_an_entry() {
     let mut s = with_entries(&home);
     s.command("find");
     s.expect("❯ bank");
-    s.send(DOWN);
+    s.key(DOWN);
     s.expect("❯ github");
-    s.send(b"\r");
+    s.key(b"\r");
     choose(&mut s, "github", "Show");
     s.expect("pass: hunter2");
     s.exit_discarding();
@@ -49,9 +50,9 @@ fn typing_filters_the_list_fuzzily() {
     let mut s = with_entries(&home);
     s.command("find");
     s.expect("❯ bank");
-    s.send(b"glb"); // g…l…b: only "gitlab" matches
+    s.key(b"glb"); // g…l…b: only "gitlab" matches
     s.expect("❯ gitlab");
-    s.send(b"\r");
+    s.key(b"\r");
     choose(&mut s, "gitlab", "Show");
     s.expect("pass: tanuki");
     s.exit_discarding();
@@ -63,7 +64,7 @@ fn a_search_term_starts_the_list_filtered() {
     let mut s = with_entries(&home);
     s.command("find gitl");
     s.expect("❯ gitlab");
-    s.send(b"\r");
+    s.key(b"\r");
     choose(&mut s, "gitlab", "Show");
     s.expect("pass: tanuki");
     s.exit_discarding();
@@ -75,7 +76,7 @@ fn the_menu_runs_the_usual_commands() {
     let mut s = with_entries(&home);
     s.command("find bank");
     s.expect("❯ bank");
-    s.send(b"\r");
+    s.key(b"\r");
     choose(&mut s, "bank", "Remove");
     s.answer("Remove 'bank'? (y/N): ", "y");
     s.expect("Entry 'bank' removed.");
@@ -91,14 +92,14 @@ fn esc_cancels_the_list_and_the_menu() {
     let mut s = with_entries(&home);
     s.command("find");
     s.expect("❯ bank");
-    s.send(ESC);
+    s.key(ESC);
     s.expect("Aborted.");
 
     s.command("find");
     s.expect("❯ bank");
-    s.send(b"\r");
+    s.key(b"\r");
     s.expect("? bank ›");
-    s.send(ESC);
+    s.key(ESC);
     s.expect("Aborted.");
     s.exit_discarding();
 }
@@ -109,7 +110,7 @@ fn ctrl_c_cancels_and_brings_the_cursor_back() {
     let mut s = with_entries(&home);
     s.command("find");
     s.expect("❯ bank");
-    s.send(CTRL_C);
+    s.key(CTRL_C);
     s.expect("Aborted.");
     s.command("get bank");
     assert!(s.output().contains("pass: s3cr3t"));
