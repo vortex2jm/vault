@@ -1,18 +1,19 @@
 # Testing
 
-`cargo test` runs the whole suite in about a second once it's built. Nothing touches your real `~/.vault`: unit tests work in temporary directories, and the end-to-end tests run the binary with `$HOME` pointing at one.
+`cargo test` runs the whole suite in a few seconds once it's built. Nothing touches your real `~/.vault`: unit tests work in temporary directories, and the end-to-end tests run the binary with `$HOME` pointing at one.
 
 ## Layout
 
 ```text
 src/tests/                unit and component tests of the crate internals
-├── support.rs            TempDir and engine helpers
-├── domain.rs             Entry, VaultState
+├── support.rs            TempDir and engine helpers, the cheap test KDF cost
+├── domain.rs             Entry, KdfParams
+├── format.rs             the file format byte by byte: both versions, plaintext codec
 ├── crypto.rs             AesGcmCrypto: key derivation, AES-GCM, generator
-├── storage.rs            FileStorage: files, backups, listing, rename, delete
-├── engine.rs             VaultEngine flows with the real adapters
+├── storage.rs            FileStorage: files, backups, atomic saves, sessions
+├── engine.rs             VaultEngine flows with the real adapters, upgrades
 ├── cli.rs                command parser, Tab completion, ~ expansion
-├── compat.rs             on-disk format; opens tests/fixtures/v0.vault
+├── compat.rs             old vault files: opens (and upgrades) the fixtures
 └── known_bugs.rs         open bugs from BACKLOG.md, #[ignore]d
 
 tests/e2e/                the real binary in a pseudo-terminal (Unix only)
@@ -22,7 +23,8 @@ tests/e2e/                the real binary in a pseudo-terminal (Unix only)
 ├── selector.rs           the find selector: arrows, fuzzy filter, action menu
 └── known_bugs.rs         open bugs that only show up in a terminal, #[ignore]d
 
-tests/fixtures/v0.vault   a vault written in the current (v0) format
+tests/fixtures/v0.vault   a vault from before the versioned format
+tests/fixtures/v1.vault   a vault in format v1
 ```
 
 ## Running
@@ -39,9 +41,11 @@ tests/fixtures/v0.vault   a vault written in the current (v0) format
 
 - **Every backlog item ships with tests.** A bug fix makes its `known_bugs` test pass: remove the `#[ignore]` and move the test to the module of its area, in the commit that ticks the item in `BACKLOG.md`. A feature adds tests to the module of its area, and to `tests/e2e/` if it shows up in the terminal.
 - **Known-bug tests describe the behaviour we want**, not the current one. When more than one fix is acceptable (refusing an operation instead of handling it, say), the test accepts any of them and checks the invariant.
-- **Never regenerate `tests/fixtures/v0.vault`.** It proves that vaults written by older versions still open. When the format changes (E1), add a new fixture next to it and keep both tests. Its password is in `src/tests/compat.rs`.
+- **Never regenerate the fixtures.** Each `tests/fixtures/vN.vault` proves that vaults written in format N still open. When the format changes again (F3 will make it v2), add a `v2.vault` with the same entries and keep every older test. The password and the expected entries are in `src/tests/compat.rs`.
 - **End-to-end tests type like a user.** `Session::command` waits for the prompt and runs a line, `answer` replies to a sub-prompt (password, y/N, the exit menu), `output` returns what the last command printed, and `expect` waits for any text. Escape sequences are stripped before matching.
 
 ## Speed
 
-`argon2` and `blake2` are compiled with optimisations even in debug builds (see `Cargo.toml`). Without that, key derivation alone made the suite take 10–15 s instead of under one. When E1 raises the Argon2 cost, the tests should switch to cheap parameters instead.
+- **Unit tests derive keys at a tiny cost** (`support::CHEAP`: real Argon2id, 64 KiB, one pass), through `VaultEngine::with_kdf`. They take about 2.5 s, almost all of it one test that round-trips a 5 MiB vault through AES-GCM in a debug build.
+- **End-to-end tests use the real cost** (128 MiB, 3 passes) because they run the shipped binary, so they take about 4 s.
+- `argon2` and `blake2` are compiled with optimisations even in debug builds (see `Cargo.toml`); without that, every derivation would be 10–20× slower.

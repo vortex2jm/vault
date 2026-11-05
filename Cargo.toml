@@ -10,16 +10,14 @@ aes-gcm = "0.10.3"
 anyhow = "1.0.100"
 argon2 = "0.5.3"
 arboard = "3"
-chrono = { version = "0.4.41", features = ["serde"] }
+chrono = "0.4.41"
 csv = "1"
 dialoguer = { version = "0.12", default-features = false, features = ["fuzzy-select"] }
 dirs-2 = "3.0.1"
 rpassword = "7.4.0"
 rustyline = "17.0.2"
-serde = { version = "1", features = ["derive"] }
 sha2 = "0.10.9"
 thiserror = "2.0.17"
-wincode = { version = "0.2.5", features = ["derive"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
 
 # Pseudo-terminal for the end-to-end tests in tests/e2e/.

@@ -7,7 +7,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 ## Features
 
 - **AES-256-GCM** authenticated encryption
-- **Argon2id** key derivation (memory-hard, resistant to brute force)
+- **Argon2id** key derivation (memory-hard, resistant to brute force): 128 MiB and 3 passes, recorded in each vault so the cost can grow without breaking old vaults
 - **Multiple named vaults** — one per context (work, personal, etc.)
 - **Tab-completion** of commands, entry names, vault names and file paths, and **command history** in the interactive shell
 - **Interactive selector** (`find`): browse your entries with the arrow keys and fuzzy search
@@ -95,7 +95,7 @@ vault[locked]>
 | `commit` | — | Save changes to disk |
 | `rename` | `<new_name>`| Rename the current vault file |
 | `ls`/`list`| — | List vaults (when locked) or entries (when unlocked) |
-| `info` | — | Show vault path and entry count |
+| `info` | — | Show the vault name, entry count and key strength |
 | `export` | `<path>` | Export entries to a CSV file (**Warning: Plaintext!**). Created `0600`; never overwrites an existing file |
 | `import` | `<path>` | Import entries from a CSV file (merges new services) |
 | **CLI** |
@@ -127,11 +127,15 @@ All vault files are stored in `~/.vault/`. On Unix the directory is `0700` and e
 └── work.vault
 ```
 
-Each `.vault` file is a binary-serialized `VaultState` containing:
+Each `.vault` file (format v1) is a small header followed by the encrypted entries:
 
-- `salt` — 16-byte random salt (generated at creation or password change)
-- `nonce` — 12-byte AES-GCM nonce (random, refreshed on every commit)
-- `cipher` — AES-256-GCM ciphertext of the serialized entries map
+- `VAULT\0` and the format version;
+- the Argon2id cost used for this vault's key (memory, passes, lanes);
+- `salt`: 16 random bytes, new at creation and at each password change;
+- `nonce`: 12 random bytes, new at every commit;
+- the AES-256-GCM ciphertext of the entries. The header is authenticated with it, so changing any byte makes the vault refuse to open.
+
+Vaults written before the versioned format (v0) still open. On unlock they are rewritten as v1 with a stronger key, and the previous file stays as the `.bkp` until the next commit. The byte-level layout is in [docs/SECURITY.md](docs/SECURITY.md#on-disk-format).
 
 ---
 

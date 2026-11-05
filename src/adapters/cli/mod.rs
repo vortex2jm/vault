@@ -8,7 +8,7 @@ use std::io::{self, Write};
 use zeroize::Zeroize;
 
 use crate::{
-    application::engine::VaultEngine,
+    application::engine::{Upgrade, VaultEngine},
     domain::ports::{CryptoPort, StoragePort},
 };
 
@@ -90,8 +90,19 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                 let mut pw = self.request_password("Vault password: ")?;
                 let result = self.engine.unlock(&v, &pw);
                 pw.zeroize();
-                result?;
-                println!("Vault '{}' unlocked.\n", v);
+                let upgrade = result?;
+                println!("Vault '{}' unlocked.", v);
+                match upgrade {
+                    Upgrade::None => println!(),
+                    Upgrade::Done => println!(
+                        "Upgraded to the current file format and key strength. \
+                         The previous file stays as the backup until your next commit.\n"
+                    ),
+                    Upgrade::Failed(e) => println!(
+                        "{YELLOW}Warning:{RESET} could not upgrade the vault file ({e}); \
+                         the next unlock will try again.\n"
+                    ),
+                }
             }
 
             Command::Create(v) => {
@@ -177,8 +188,14 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
 
             Command::Info => {
                 let (name, count) = self.engine.info()?;
+                let kdf = self.engine.kdf_params()?;
                 println!("{}Vault{} : {}{}{}", BLUE, RESET, GREEN, name, RESET);
-                println!("{}Entries{}: {}{}{}\n", BLUE, RESET, CYAN, count, RESET);
+                println!("{}Entries{}: {}{}{}", BLUE, RESET, CYAN, count, RESET);
+                println!(
+                    "{BLUE}Key{RESET}    : Argon2id, {} MiB, {} passes\n",
+                    kdf.m_cost / 1024,
+                    kdf.t_cost
+                );
             }
 
             Command::Rename(new_name) => {

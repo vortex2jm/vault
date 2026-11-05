@@ -1,15 +1,32 @@
-use crate::domain::errors::{CryptoError, StorageError};
+use crate::domain::{
+    errors::{CryptoError, StorageError},
+    models::KdfParams,
+};
 
 pub trait CryptoPort {
     fn salt_gen(&self) -> [u8; 16];
-    fn init(&mut self, password: &str, salt: &[u8]) -> Result<(), CryptoError>;
+    /// Derives the key for `password` and `salt` at the cost `kdf`.
+    fn init(&mut self, password: &str, salt: &[u8], kdf: &KdfParams) -> Result<(), CryptoError>;
     fn reset(&mut self);
-    fn encrypt(&self, plaintext: &[u8]) -> Result<(Vec<u8>, [u8; 12]), CryptoError>;
-    fn decrypt(&self, ciphertext: &[u8], nonce: &[u8]) -> Result<Vec<u8>, CryptoError>;
+    /// Encrypts `plaintext`. `associated_data` is authenticated, not encrypted.
+    fn encrypt(
+        &self,
+        plaintext: &[u8],
+        associated_data: &[u8],
+    ) -> Result<(Vec<u8>, [u8; 12]), CryptoError>;
+    /// Decrypts `ciphertext`; fails unless `associated_data` is exactly what
+    /// it was encrypted with.
+    fn decrypt(
+        &self,
+        ciphertext: &[u8],
+        nonce: &[u8],
+        associated_data: &[u8],
+    ) -> Result<Vec<u8>, CryptoError>;
     /// Generates a cryptographically random password of `length` characters.
     fn gen_password(&self, length: usize) -> String;
-    /// Returns true if `password` + `salt` derives to the currently held key.
-    fn verify_password(&self, password: &str, salt: &[u8]) -> bool;
+    /// Returns true if `password` + `salt` at cost `kdf` derives to the
+    /// currently held key.
+    fn verify_password(&self, password: &str, salt: &[u8], kdf: &KdfParams) -> bool;
 }
 
 pub trait StoragePort {

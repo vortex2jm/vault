@@ -2,13 +2,15 @@
 
 use std::{cell::Cell, fs, rc::Rc};
 
-use super::support::{TempDir, created, engine, path_str};
+use super::support::{CHEAP, TempDir, created, engine, engine_with_kdf, path_str};
 use crate::{
     adapters::{aes_crypto::AesGcmCrypto, file_storage::FileStorage},
-    application::engine::{MAX_GENERATED_LENGTH, MIN_GENERATED_LENGTH, VaultEngine},
+    application::engine::{MAX_GENERATED_LENGTH, MIN_GENERATED_LENGTH, Upgrade, VaultEngine},
     domain::{
         errors::{StorageError, VaultError},
-        ports::StoragePort,
+        format::VaultFile,
+        models::KdfParams,
+        ports::{CryptoPort, StoragePort},
     },
 };
 
@@ -31,7 +33,7 @@ impl FailingSaves {
             inner: FileStorage::with_base_path(dir.path().to_path_buf()),
             saves_left: Rc::clone(&saves_left),
         };
-        (VaultEngine::new(storage, AesGcmCrypto::new()), saves_left)
+        (VaultEngine::with_kdf(storage, AesGcmCrypto::new(), CHEAP), saves_left)
     }
 }
 
@@ -177,6 +179,116 @@ fn a_create_that_cannot_be_saved_leaves_the_engine_locked() {
     assert!(matches!(engine.create_vault("personal", "pw"), Err(VaultError::ChangedOnDisk)));
     assert!(engine.is_locked());
     assert!(matches!(engine.add("s", "u", "p"), Err(VaultError::Locked)));
+}
+
+#[test]
+fn a_vault_with_a_cheaper_key_is_upgraded_on_unlock() {
+    let dir = TempDir::new();
+    let weak = KdfParams { m_cost: 32, ..CHEAP };
+    let mut old = engine_with_kdf(dir.path(), weak);
+    old.create_vault("personal", "pw").unwrap();
+    old.add("github", "alice", "hunter2").unwrap();
+    old.commit().unwrap();
+    old.lock().unwrap();
+
+    let mut engine = engine(&dir);
+    assert_eq!(engine.unlock("personal", "pw").unwrap(), Upgrade::Done);
+    assert_eq!(engine.kdf_params().unwrap(), CHEAP);
+    assert_eq!(engine.get("github").unwrap().passwd, "hunter2");
+    assert!(!engine.is_dirty());
+    let file = VaultFile::decode(&fs::read(dir.file("personal.vault")).unwrap()).unwrap();
+    assert_eq!(file.kdf, CHEAP);
+}
+
+#[test]
+fn a_vault_with_a_costlier_key_is_left_alone() {
+    let dir = TempDir::new();
+    let stronger = KdfParams { m_cost: 128, t_cost: 2, ..CHEAP };
+    engine_with_kdf(dir.path(), stronger).create_vault("personal", "pw").unwrap();
+    let before = fs::read(dir.file("personal.vault")).unwrap();
+
+    let mut engine = engine(&dir);
+    assert_eq!(engine.unlock("personal", "pw").unwrap(), Upgrade::None);
+    assert_eq!(engine.kdf_params().unwrap(), stronger);
+    assert_eq!(fs::read(dir.file("personal.vault")).unwrap(), before);
+}
+
+#[test]
+fn a_failed_upgrade_leaves_the_vault_usable_as_it_was() {
+    let dir = TempDir::new();
+    let weak = KdfParams { m_cost: 32, ..CHEAP };
+    engine_with_kdf(dir.path(), weak).create_vault("personal", "pw").unwrap();
+
+    let (mut engine, saves_left) = FailingSaves::engine(&dir, 0);
+    assert!(matches!(engine.unlock("personal", "pw").unwrap(), Upgrade::Failed(_)));
+    assert_eq!(engine.kdf_params().unwrap(), weak);
+
+    // Still works with the key it had, and the next unlock tries again.
+    saves_left.set(usize::MAX);
+    engine.add("github", "alice", "hunter2").unwrap();
+    engine.commit().unwrap();
+    engine.lock().unwrap();
+    assert_eq!(engine.unlock("personal", "pw").unwrap(), Upgrade::Done);
+    assert_eq!(engine.get("github").unwrap().passwd, "hunter2");
+}
+
+#[test]
+fn changing_the_header_makes_the_vault_unreadable() {
+    let dir = TempDir::new();
+    created(&dir, "personal", "pw").lock().unwrap();
+    let original = fs::read(dir.file("personal.vault")).unwrap();
+    let unlock_with = |bytes: &[u8]| {
+        fs::write(dir.file("personal.vault"), bytes).unwrap();
+        engine(&dir).unlock("personal", "pw")
+    };
+
+    // Memory cost, passes and salt are all authenticated.
+    for offset in [9, 13, 21] {
+        let mut bytes = original.clone();
+        bytes[offset] ^= 2;
+        assert!(
+            matches!(unlock_with(&bytes), Err(VaultError::InvalidPassword)),
+            "byte {offset}"
+        );
+    }
+    let mut newer = original.clone();
+    newer[6] = 9;
+    assert!(matches!(unlock_with(&newer), Err(VaultError::UnsupportedFormat(9))));
+    assert!(matches!(unlock_with(&original[..20]), Err(VaultError::Corrupted)));
+    assert!(unlock_with(&original).is_ok());
+}
+
+#[test]
+fn the_header_is_authenticated_as_associated_data() {
+    let dir = TempDir::new();
+    created(&dir, "personal", "pw").lock().unwrap();
+    let file = VaultFile::decode(&fs::read(dir.file("personal.vault")).unwrap()).unwrap();
+
+    let mut crypto = AesGcmCrypto::new();
+    crypto.init("pw", &file.salt, &file.kdf).unwrap();
+    assert!(crypto.decrypt(&file.cipher, &file.nonce, &file.associated_data()).is_ok());
+    assert!(crypto.decrypt(&file.cipher, &file.nonce, &[]).is_err());
+}
+
+#[test]
+fn kdf_params_reports_the_open_vaults_cost() {
+    let dir = TempDir::new();
+    assert_eq!(created(&dir, "personal", "pw").kdf_params().unwrap(), CHEAP);
+    assert!(matches!(engine(&dir).kdf_params(), Err(VaultError::Locked)));
+}
+
+#[test]
+fn a_vault_over_4_mib_commits_and_reopens() {
+    // The old serialisation library wrote it, then refused to read it (B3).
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "big", "pw");
+    let big = "x".repeat(5 * 1024 * 1024);
+    engine.add("big", "u", &big).unwrap();
+    engine.commit().unwrap();
+    engine.lock().unwrap();
+
+    engine.unlock("big", "pw").unwrap();
+    assert_eq!(engine.get("big").unwrap().passwd.len(), big.len());
 }
 
 #[test]

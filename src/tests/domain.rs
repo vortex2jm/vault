@@ -1,6 +1,6 @@
-//! Domain models: `Entry` and `VaultState`.
+//! Domain models: `Entry` and `KdfParams`.
 
-use crate::domain::models::{Entry, VaultState};
+use crate::domain::models::{Entry, KdfParams};
 
 fn github() -> Entry {
     Entry::new("github".into(), "alice".into(), "hunter2".into())
@@ -30,9 +30,11 @@ fn update_replaces_only_the_given_fields() {
 }
 
 #[test]
-fn a_new_vault_state_has_its_salt_and_no_ciphertext_yet() {
-    let state = VaultState::new(&[9; 16]);
-    assert_eq!(state.salt, [9; 16]);
-    assert_eq!(state.nonce, [0; 12]);
-    assert!(state.cipher.is_empty());
+fn a_cost_is_weaker_if_it_takes_less_memory_or_fewer_passes() {
+    let base = KdfParams { m_cost: 1024, t_cost: 2, p_cost: 1 };
+    assert!(KdfParams { m_cost: 512, ..base }.is_weaker_than(&base));
+    assert!(KdfParams { t_cost: 1, ..base }.is_weaker_than(&base));
+    assert!(!base.is_weaker_than(&base));
+    assert!(!KdfParams { m_cost: 2048, ..base }.is_weaker_than(&base));
+    assert!(KdfParams::LEGACY.is_weaker_than(&KdfParams::DEFAULT));
 }

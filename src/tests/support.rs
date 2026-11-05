@@ -9,9 +9,18 @@ use std::{
 use crate::{
     adapters::{aes_crypto::AesGcmCrypto, file_storage::FileStorage},
     application::engine::VaultEngine,
+    domain::models::KdfParams,
 };
 
 pub type Engine = VaultEngine<FileStorage, AesGcmCrypto>;
+
+/// Argon2 cost for unit tests: real Argon2id, tiny memory, so hundreds of
+/// derivations stay fast. Production uses `KdfParams::DEFAULT`.
+pub const CHEAP: KdfParams = KdfParams {
+    m_cost: 64,
+    t_cost: 1,
+    p_cost: 1,
+};
 
 /// A fresh directory under the system temp dir, removed when dropped.
 pub struct TempDir(PathBuf);
@@ -56,11 +65,17 @@ pub fn engine(dir: &TempDir) -> Engine {
     engine_at(dir.path())
 }
 
-/// An engine whose vaults live in `base`.
+/// An engine whose vaults live in `base`, deriving keys at [`CHEAP`] cost.
 pub fn engine_at(base: &Path) -> Engine {
-    VaultEngine::new(
+    engine_with_kdf(base, CHEAP)
+}
+
+/// An engine whose vaults live in `base`, deriving new keys at `kdf` cost.
+pub fn engine_with_kdf(base: &Path, kdf: KdfParams) -> Engine {
+    VaultEngine::with_kdf(
         FileStorage::with_base_path(base.to_path_buf()),
         AesGcmCrypto::new(),
+        kdf,
     )
 }
 

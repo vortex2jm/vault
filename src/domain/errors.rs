@@ -35,6 +35,12 @@ pub enum VaultError {
     #[error("Invalid password or corrupted vault")]
     InvalidPassword,
 
+    #[error("The vault file is damaged, or isn't a vault file")]
+    Corrupted,
+
+    #[error("This vault uses file format v{0}, newer than this program supports: update vault")]
+    UnsupportedFormat(u16),
+
     #[error(
         "The vault changed on disk since it was opened (another session?). \
          Nothing was saved: lock and unlock it to reload"

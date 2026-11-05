@@ -6,7 +6,8 @@ use zeroize::Zeroize;
 
 use crate::domain::{
     errors::{StorageError, VaultError},
-    models::{Entry, VaultState},
+    format::{self, CURRENT_VERSION, FormatError, VaultFile},
+    models::{Entry, KdfParams, VaultState},
     ports::{CryptoPort, StoragePort},
 };
 
@@ -15,6 +16,19 @@ pub const MIN_GENERATED_LENGTH: usize = 8;
 /// Longest password `gen_password` produces.
 pub const MAX_GENERATED_LENGTH: usize = 256;
 
+/// What `unlock` did to the vault file besides opening it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Upgrade {
+    /// Nothing: the file was already in the current format and key cost.
+    None,
+    /// The file was rewritten in the current format, with a key derived at
+    /// the current cost. The previous file is the backup until the next commit.
+    Done,
+    /// The file is outdated but couldn't be rewritten now (the error); the
+    /// next unlock tries again.
+    Failed(String),
+}
+
 /// VaultEngine is the core of the application, responsible for managing vault state, entries and interactions with storage and crypto ports
 pub struct VaultEngine<S: StoragePort, C: CryptoPort> {
     storage: S,
@@ -22,17 +36,25 @@ pub struct VaultEngine<S: StoragePort, C: CryptoPort> {
     vault_state: Option<VaultState>,
     entries: BTreeMap<String, Entry>,
     dirty: bool,
+    /// Key derivation cost for new vaults, password changes and upgrades.
+    kdf: KdfParams,
 }
 
 /// VaultEngine is the core of the application, responsible for managing vault state, entries and interactions with storage and crypto ports
 impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
     pub fn new(storage: S, crypto: C) -> Self {
+        Self::with_kdf(storage, crypto, KdfParams::DEFAULT)
+    }
+
+    /// An engine that derives new keys at `kdf` instead of the default cost.
+    pub fn with_kdf(storage: S, crypto: C, kdf: KdfParams) -> Self {
         Self {
             storage,
             crypto,
             vault_state: None,
             entries: BTreeMap::new(),
             dirty: false,
+            kdf,
         }
     }
 
@@ -85,11 +107,12 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         }
 
         let salt = self.crypto.salt_gen();
-        self.vault_state = Some(VaultState::new(&salt));
+        let kdf = self.kdf;
+        self.vault_state = Some(VaultState { salt, kdf });
 
         // If key derivation fails, clear vault_state so the engine stays locked
         // instead of appearing unlocked with an uninitialized crypto context.
-        if let Err(e) = self.crypto.init(password, &salt) {
+        if let Err(e) = self.crypto.init(password, &salt, &kdf) {
             self.vault_state = None;
             return Err(e.into());
         }
@@ -105,28 +128,27 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         Ok(())
     }
 
-    /// Commits vault state and entries to storage, encrypting them with crypto port
+    /// Commits vault state and entries to storage, encrypting them with crypto port.
+    /// The file is always written in the current format.
     pub fn commit(&mut self) -> Result<(), VaultError> {
-        let vault_state = self.vault_state.as_mut().ok_or(VaultError::Locked)?;
+        let VaultState { salt, kdf } = self.vault_state.ok_or(VaultError::Locked)?;
 
-        let mut entries_buffer = Vec::new();
-        wincode::serialize_into(&mut entries_buffer, &self.entries)
-            .map_err(|_| VaultError::Serialization)?;
-
+        let mut plaintext = format::encode_entries(&self.entries);
+        let header = format::header(CURRENT_VERSION, &kdf, &salt);
         // Encrypt first, then zeroize the plaintext buffer regardless of outcome.
-        let encrypt_result = self.crypto.encrypt(&entries_buffer);
-        entries_buffer.zeroize();
-        let (cipher, nonce) = encrypt_result?;
+        let encrypted = self.crypto.encrypt(&plaintext, &header);
+        plaintext.zeroize();
+        let (cipher, nonce) = encrypted?;
 
-        vault_state.cipher = cipher;
-        vault_state.nonce = nonce;
-
-        let mut vault_buffer = Vec::new();
-        wincode::serialize_into(&mut vault_buffer, vault_state)
-            .map_err(|_| VaultError::Serialization)?;
-
+        let file = VaultFile {
+            version: CURRENT_VERSION,
+            kdf,
+            salt,
+            nonce,
+            cipher,
+        };
         self.storage
-            .save(&vault_buffer)
+            .save(&file.encode())
             .map_err(|e| match e {
                 StorageError::Conflict => VaultError::ChangedOnDisk,
                 other => other.into(),
@@ -136,8 +158,10 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         Ok(())
     }
 
-    /// Unlocks vault by name, loading entries into memory and deriving key from password
-    pub fn unlock(&mut self, vault: &str, password: &str) -> Result<(), VaultError> {
+    /// Unlocks vault by name, loading entries into memory and deriving key from password.
+    /// A file in an older format, or with a key cheaper than the engine's, is
+    /// rewritten in the current format right away (see [`Upgrade`]).
+    pub fn unlock(&mut self, vault: &str, password: &str) -> Result<Upgrade, VaultError> {
         // Do not unlock if it's already unlocked — checked BEFORE set_path to
         // avoid corrupting the storage path when an unlock is attempted while open.
         if !self.is_locked() {
@@ -153,41 +177,83 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             return Err(VaultError::VaultNotFound);
         }
 
-        // Load file bytes
+        // Load file bytes and split them into header fields and ciphertext.
         let buffer = self.storage.load()?;
-
-        // Deserialize vault state (salt, nonce, ciphertext)
-        let v_state: VaultState = wincode::deserialize_from(&mut buffer.as_slice())
-            .map_err(|_| VaultError::Serialization)?;
+        let file = VaultFile::decode(&buffer).map_err(|e| match e {
+            FormatError::UnsupportedVersion(version) => VaultError::UnsupportedFormat(version),
+            _ => VaultError::Corrupted,
+        })?;
         // NOTE: vault_state is NOT set yet — only after full successful auth below.
 
         // Derive key — on failure there is nothing to clean up since vault_state
         // was never set and crypto had no key before this call.
-        self.crypto.init(password, &v_state.salt)?;
+        self.crypto.init(password, &file.salt, &file.kdf)?;
 
-        // Decrypt into a plaintext buffer, then zeroize it after deserialization
-        // so the raw password bytes don't linger on the heap.
+        // Decrypt into a plaintext buffer, then zeroize it after decoding so
+        // the raw password bytes don't linger on the heap. The header is
+        // authenticated too: a changed header fails here like a wrong password.
         let mut plaintext = self
             .crypto
-            .decrypt(&v_state.cipher, &v_state.nonce)
+            .decrypt(&file.cipher, &file.nonce, &file.associated_data())
             .map_err(|_| {
                 self.crypto.reset();
                 VaultError::InvalidPassword
             })?;
 
-        let entries_result = wincode::deserialize_from(&mut plaintext.as_slice())
-            .map_err(|_| {
-                self.crypto.reset();
-                VaultError::Serialization
-            });
+        let entries_result = format::decode_entries(&plaintext).map_err(|_| {
+            self.crypto.reset();
+            VaultError::Corrupted
+        });
         plaintext.zeroize();
         self.entries = entries_result?;
 
         // Only set vault_state after every authentication step has succeeded.
         // This keeps is_locked() accurate throughout the entire unlock flow.
-        self.vault_state = Some(v_state);
+        self.vault_state = Some(VaultState {
+            salt: file.salt,
+            kdf: file.kdf,
+        });
 
-        Ok(())
+        if file.version < CURRENT_VERSION || file.kdf.is_weaker_than(&self.kdf) {
+            return Ok(self.upgrade(password));
+        }
+        Ok(Upgrade::None)
+    }
+
+    /// Rewrites the open vault in the current format, with a fresh salt and a
+    /// key derived at the engine's cost. On failure, goes back to the old key
+    /// so the vault stays usable as it was.
+    fn upgrade(&mut self, password: &str) -> Upgrade {
+        let Some(old) = self.vault_state else {
+            return Upgrade::None;
+        };
+        let new = VaultState {
+            salt: self.crypto.salt_gen(),
+            kdf: self.kdf,
+        };
+        let result = self
+            .crypto
+            .init(password, &new.salt, &new.kdf)
+            .map_err(VaultError::from)
+            .and_then(|()| {
+                self.vault_state = Some(new);
+                self.commit()
+            });
+        match result {
+            Ok(()) => Upgrade::Done,
+            Err(e) => {
+                self.vault_state = Some(old);
+                let _ = self.crypto.init(password, &old.salt, &old.kdf);
+                Upgrade::Failed(e.to_string())
+            }
+        }
+    }
+
+    /// How the open vault's key was derived.
+    pub fn kdf_params(&self) -> Result<KdfParams, VaultError> {
+        self.vault_state
+            .map(|state| state.kdf)
+            .ok_or(VaultError::Locked)
     }
 
     /// Locks vault, clearing all entries from memory and zeroizing them
@@ -396,41 +462,33 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
     /// Changes the master password of the currently open vault.
     /// Verifies `old_password` before accepting `new_password`.
     pub fn change_password(&mut self, old_password: &str, new_password: &str) -> Result<(), VaultError> {
-        if self.is_locked() {
-            return Err(VaultError::Locked);
-        }
-
-        let current_salt = self
-            .vault_state
-            .as_ref()
-            .ok_or(VaultError::Locked)?
-            .salt;
+        let current = self.vault_state.ok_or(VaultError::Locked)?;
 
         // Verify the old password by re-deriving and comparing keys.
-        if !self.crypto.verify_password(old_password, &current_salt) {
+        if !self
+            .crypto
+            .verify_password(old_password, &current.salt, &current.kdf)
+        {
             return Err(VaultError::InvalidPassword);
         }
 
-        // Generate a fresh salt and re-init with the new password.
-        let new_salt = self.crypto.salt_gen();
-        if let Err(e) = self.crypto.init(new_password, &new_salt) {
+        // A fresh salt, and the engine's current cost for the new key.
+        let new = VaultState {
+            salt: self.crypto.salt_gen(),
+            kdf: self.kdf,
+        };
+        if let Err(e) = self.crypto.init(new_password, &new.salt, &new.kdf) {
             // Restore the old key so the vault stays usable.
-            let _ = self.crypto.init(old_password, &current_salt);
+            let _ = self.crypto.init(old_password, &current.salt, &current.kdf);
             return Err(e.into());
         }
-
-        // Update salt in vault_state and commit.
-        if let Some(vs) = self.vault_state.as_mut() {
-            vs.salt = new_salt;
-        }
+        self.vault_state = Some(new);
 
         if let Err(e) = self.commit() {
             // Nothing was saved: go back to the old password, so that a later
             // commit doesn't switch passwords behind the user's back.
-            if let Some(vs) = self.vault_state.as_mut() {
-                vs.salt = current_salt;
-            }
-            let _ = self.crypto.init(old_password, &current_salt);
+            self.vault_state = Some(current);
+            let _ = self.crypto.init(old_password, &current.salt, &current.kdf);
             return Err(e);
         }
 

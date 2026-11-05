@@ -12,22 +12,6 @@ use std::fs;
 use super::support::{TempDir, created, engine, path_str};
 
 #[test]
-#[ignore = "B3: payloads over 4 MiB commit but never open again"]
-fn b3_a_committed_vault_must_always_reopen() {
-    let dir = TempDir::new();
-    let mut engine = created(&dir, "big", "pw");
-    let big = "x".repeat(5 * 1024 * 1024);
-    engine.add("big", "u", &big).unwrap();
-    if engine.commit().is_err() {
-        return; // refusing to write an unreadable vault is a valid fix
-    }
-    engine.lock().unwrap();
-
-    engine.unlock("big", "pw").unwrap();
-    assert_eq!(engine.get("big").unwrap().passwd.len(), big.len());
-}
-
-#[test]
 #[ignore = "B6: CSV import maps columns by position, ignoring the header"]
 fn b6_import_must_not_misplace_columns() {
     let dir = TempDir::new();

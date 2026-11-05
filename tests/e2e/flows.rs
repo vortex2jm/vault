@@ -176,6 +176,28 @@ fn ls_lists_vaults_when_locked_and_entries_when_unlocked() {
 }
 
 #[test]
+fn an_old_vault_is_upgraded_when_unlocked() {
+    let home = TempDir::new();
+    std::fs::create_dir(home.file(".vault")).unwrap();
+    std::fs::copy(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/v0.vault"),
+        home.file(".vault").join("fixture.vault"),
+    )
+    .unwrap();
+
+    let mut s = Session::start(home.path());
+    s.command("unlock fixture");
+    s.answer("Vault password: ", "fixture-password");
+    s.expect("Upgraded to the current file format and key strength.");
+    s.command("info");
+    let out = s.output();
+    assert!(out.contains("Key    : Argon2id, 128 MiB, 3 passes"), "{out}");
+    s.command("get github");
+    assert!(s.output().contains("pass: hunter2"));
+    s.exit();
+}
+
+#[test]
 fn info_shows_the_vault_name_and_entry_count() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());

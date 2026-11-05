@@ -21,7 +21,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 
 - [x] 🔴 **B1** `rename` silently overwrites an existing vault (and its `.bkp`): `fs::rename` replaces the destination.
 - [x] 🔴 **B2** Non-atomic save (truncates in place, `.bkp` not fsynced, restore only on in-process errors) and no lock against two sessions on the same vault (the last commit wins).
-- [ ] 🔴 **B3** A vault whose payload exceeds 4 MiB commits but never opens again (wincode's default read limit). Fix together with E1.
+- [x] 🔴 **B3** A vault whose payload exceeds 4 MiB commits but never opens again (wincode's default read limit). Fix together with E1.
 - [x] 🟠 **B4** Sub-prompts (`update` username, confirmations, exit menu) use raw `read_line`: arrow keys are stored in the field as escape sequences.
 - [x] 🟠 **B5** `AesGcmCrypto::reset()` zeroizes a copy of the key and leaves the original bytes in place.
 - [ ] 🟠 **B6** CSV import maps columns by position (ignores the header), is not atomic (an error mid-file leaves partial entries with `dirty = false`) and accepts service names with spaces that the CLI can't reach.
@@ -42,7 +42,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 
 ## Essentials
 
-- [ ] **E1** Versioned file format: magic, version and Argon2 parameters in a header authenticated as AES-GCM AAD; automatic migration of existing vaults; stronger Argon2 parameters; no 4 MiB limit (B3).
+- [x] **E1** Versioned file format: magic, version and Argon2 parameters in a header authenticated as AES-GCM AAD; automatic migration of existing vaults; stronger Argon2 parameters; no 4 MiB limit (B3).
 - [ ] **E2** Clipboard: clear automatically after ~30 s and stay out of clipboard-manager history.
 - [ ] **E3** Auto-lock after N minutes of inactivity.
 - [ ] **E5** Rename an entry (`mv <old> <new>`).

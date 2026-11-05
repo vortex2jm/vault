@@ -9,5 +9,6 @@ mod compat;
 mod crypto;
 mod domain;
 mod engine;
+mod format;
 mod known_bugs;
 mod storage;

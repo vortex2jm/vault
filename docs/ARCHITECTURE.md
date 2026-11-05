@@ -12,7 +12,8 @@ src/
 │
 ├── domain/                   # Pure business rules, no I/O, no deps
 │   ├── mod.rs
-│   ├── models.rs             # Entry, VaultState
+│   ├── models.rs             # Entry, KdfParams, VaultState
+│   ├── format.rs             # the vault file format, byte by byte
 │   ├── ports.rs              # CryptoPort, StoragePort (traits)
 │   └── errors.rs             # VaultError, CryptoError, StorageError
 │
@@ -40,7 +41,9 @@ The innermost layer. Contains only:
 
 - **`models.rs`** — Plain data structures:
   - `Entry` — a single credential (`service`, `username`, `passwd`, `created_at`, `updated_at`). Derives `Zeroize` so it can be wiped from memory on lock.
-  - `VaultState` — the on-disk envelope: `salt`, `nonce`, `cipher`.
+  - `KdfParams` — Argon2id cost (memory, passes, lanes): `DEFAULT` for new keys, `LEGACY` for version-0 files.
+  - `VaultState` — what the engine keeps about the open vault's key: its `salt` and `KdfParams`.
+- **`format.rs`** — The file format as pure functions: `VaultFile::decode` (v0 and v1) and `encode` (v1), the header used as AES-GCM associated data, and the plaintext codec for the entries. No serialization library: every length is checked against the bytes present.
 - **`ports.rs`** — Pure trait definitions:
   - `CryptoPort` — `salt_gen`, `init`, `reset`, `encrypt`, `decrypt`
   - `StoragePort` — `exists`, `set_path`, `get_path`, `load`, `save`, `list_vaults`
@@ -49,7 +52,7 @@ The innermost layer. Contains only:
   - `CryptoError` — adapter-level crypto failures
   - `StorageError` — adapter-level I/O failures
 
-No external dependencies (only `serde`, `zeroize`, `thiserror`, `chrono`, `wincode`).
+No I/O. External crates: only `zeroize`, `thiserror` and `chrono`.
 
 ---
 
@@ -63,7 +66,8 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 ├── crypto: C
 ├── vault_state: Option<VaultState>   // None = locked
 ├── entries: BTreeMap<String, Entry>  // in-memory decrypted entries
-└── dirty: bool                       // true = uncommitted changes
+├── dirty: bool                       // true = uncommitted changes
+└── kdf: KdfParams                    // cost for new keys (DEFAULT; cheap in unit tests)
 ```
 
 #### Operations
@@ -71,7 +75,7 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 | Method | Description |
 |--------|-------------|
 | `create_vault(name, pw)` | Generates salt, derives key, commits empty state to disk |
-| `unlock(name, pw)` | Loads file, derives key, decrypts entries into memory |
+| `unlock(name, pw)` | Loads file, derives key, decrypts entries into memory; rewrites an old-format or cheaper-keyed file at once and reports it as `Upgrade` |
 | `lock()` | Zeroizes entries, clears vault state |
 | `commit()` | Encrypts current entries, saves to disk with fresh nonce |
 | `add(svc, user, pw)` | Inserts a new `Entry`, marks dirty |
@@ -86,8 +90,8 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 
 Implements `CryptoPort` using:
 
-- **`Argon2::default()`** (Argon2id) for key derivation from password + salt
-- **`Aes256Gcm`** from the `aes-gcm` crate for AEAD encryption
+- **Argon2id** for key derivation from password + salt, at the vault's `KdfParams`
+- **`Aes256Gcm`** from the `aes-gcm` crate for AEAD encryption, with the file header as associated data
 - A fresh **random nonce** (via `OsRng`) on every `encrypt` call
 - `ZeroizeOnDrop` on the struct — the key is wiped when it is dropped
 - `reset()` — wipes the key in place without dropping the struct (on `lock` and after a failed unlock)
@@ -139,18 +143,16 @@ The outermost layer. Implements the interactive REPL.
 ```
 entries: BTreeMap<String, Entry>
     │
-    ▼ wincode::serialize_into()
-entries_buffer: Vec<u8>
+    ▼ format::encode_entries()        (one allocation, zeroized after use)
+plaintext: Vec<u8>
     │
-    ▼ CryptoPort::encrypt()
+    ▼ CryptoPort::encrypt(plaintext, header)   header = format::header(v1, kdf, salt)
 (cipher: Vec<u8>, nonce: [u8; 12])
     │
-    ▼ written into VaultState { salt, nonce, cipher }
+    ▼ VaultFile { version: 1, kdf, salt, nonce, cipher }.encode()
+file bytes: header | nonce | cipher
     │
-    ▼ wincode::serialize_into()
-vault_buffer: Vec<u8>
-    │
-    ▼ StoragePort::save()  (backup + fsync)
+    ▼ StoragePort::save()  (conflict check, backup, atomic replace)
 ~/.vault/<name>.vault
 ```
 
@@ -160,16 +162,19 @@ vault_buffer: Vec<u8>
 ~/.vault/<name>.vault
     │
     ▼ StoragePort::load()
-vault_buffer: Vec<u8>
+file bytes
     │
-    ▼ wincode::deserialize_from()
-VaultState { salt, nonce, cipher }
+    ▼ VaultFile::decode()             (v0 or v1; bounded costs; newer → refused)
+VaultFile { version, kdf, salt, nonce, cipher }
     │
-    ├──► CryptoPort::init(password, salt)   → derives AES key
+    ├──► CryptoPort::init(password, salt, kdf)   → derives AES key
     │
-    ▼ CryptoPort::decrypt(cipher, nonce)
-entries_buffer: Vec<u8>
+    ▼ CryptoPort::decrypt(cipher, nonce, associated_data)   (header for v1, none for v0)
+plaintext: Vec<u8>
     │
-    ▼ wincode::deserialize_from()
+    ▼ format::decode_entries()        (then the plaintext is zeroized)
 entries: BTreeMap<String, Entry>
+    │
+    └──► if v0 or kdf weaker than the engine's: new salt, key at the current
+         cost, commit → Upgrade::Done (old file kept as .bkp)
 ```
