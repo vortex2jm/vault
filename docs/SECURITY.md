@@ -50,9 +50,9 @@ create/unlock
     ├──► commit: key used in encrypt(), nonce refreshed each time
     │
     ├──► lock: reset() overwrites the key with 0x00 in place;
-    │          entries are zeroized via the Zeroize derive on Entry
+    │          entries wipe themselves as the map is cleared (ZeroizeOnDrop)
     │
-    └──► process exit: ZeroizeOnDrop overwrites the key with 0x00
+    └──► process exit: ZeroizeOnDrop overwrites the key and the entries
 ```
 
 ### Key Material Handling
@@ -60,9 +60,14 @@ create/unlock
 - The raw key **never leaves the process** — it is not written to disk, logged, or transmitted.
 - `AesGcmCrypto` derives `ZeroizeOnDrop` — the key is overwritten when the struct is dropped.
 - `reset()` overwrites the key in place without dropping the struct. It runs on `lock` and when `unlock` fails, so no key (right or wrong) stays in memory. The key lives in a plain array rather than an `Option`, because `Option::take()` would copy it out and leave the original bytes behind.
-- Entries derive `Zeroize` — on `lock()`, every entry is explicitly zeroized before the map is cleared.
-- **Password history.** `update` moves the replaced password into the entry's history (inside the encrypted vault) instead of dropping it; past the last 10, the oldest is zeroized and dropped. Old passwords stay in the vault until then, or until the entry is removed.
-- Passwords read from stdin via `rpassword` are held in `String` and zeroized (via `str.zeroize()`) immediately after use in the CLI layer.
+- **Entries wipe themselves when dropped** (`ZeroizeOnDrop` on `Entry` and its previous passwords), wherever that happens: `lock`, `rm`, a failed import, or leaving the program without locking. Their `Debug` output leaves the password, the notes and the history out, so a stray `{:?}` in a panic message prints no secret.
+- **Password history.** `update` moves the replaced password into the entry's history (inside the encrypted vault) instead of dropping it; past the last 10, the oldest is dropped, which wipes it. Old passwords stay in the vault until then, or until the entry is removed.
+- **Typed secrets** (passwords at every prompt, notes, generated passwords) are held in `Zeroizing<String>`, wiped on every path out, including a later prompt failing.
+- **Argon2's working memory** (128 MiB) holds values derived from the password, and its last block alone rebuilds the key. The adapter supplies that memory itself and wipes it after each derivation; with the `argon2` crate's `zeroize` feature, the intermediate hashes are wiped too.
+- **AES round keys** contain the key itself. A cipher lives for one encrypt or decrypt, and the `aes` crate's `zeroize` feature wipes its round keys when it is dropped.
+- **Known gaps**, in code this project doesn't control:
+  - The GHASH key (AES of a zero block under the vault key) is not wiped when a cipher is dropped: `polyval` 0.6 picks its backend at run time and that wrapper never runs the backends' zeroizing `Drop`. It doesn't reveal the key, but together with the vault file it would let someone alter the file without the tag noticing. Getting it takes reading this process's memory.
+  - `rpassword` reads through a buffer it doesn't wipe, `rustyline` keeps the line being edited (the notes prompt) in its own buffer, the clipboard holds a copied password until it is replaced, and the `csv` crate buffers rows during `export` and `import`.
 
 ---
 
@@ -117,7 +122,7 @@ A crash or power loss at any point leaves each file either in its old state or i
 | Offline brute force on stolen vault file | Argon2id key derivation makes each attempt expensive; new master passwords need at least 8 characters |
 | Ciphertext tampering | AES-GCM authentication tag — decryption fails on any modification |
 | Header tampering (cost, salt, version) | The header is AES-GCM associated data; costs from a file are bounded before any key is derived |
-| Secrets lingering in RAM after lock | `ZeroizeOnDrop` on key, `Zeroize` on entries, explicit zeroize on passwords |
+| Secrets lingering in RAM after lock | `ZeroizeOnDrop` on the key and on entries, `Zeroizing` for typed secrets, Argon2 memory and AES round keys wiped (see Key Material Handling for the gaps) |
 | Vault file corruption on crash | Atomic replace: temporary file + `fsync` + `rename` + directory `fsync` |
 | Lost updates between sessions | A commit is refused if another session saved since this one loaded the vault |
 | Other local users reading vaults or exports | `~/.vault` is `0700`; vaults, backups and CSV exports are `0600`; an export never overwrites an existing file |

@@ -2,7 +2,7 @@ use aes_gcm::{
     AeadCore, Aes256Gcm, Key, KeyInit, Nonce,
     aead::{Aead, OsRng, Payload, rand_core::RngCore},
 };
-use argon2::{Algorithm, Argon2, Params, Version};
+use argon2::{Algorithm, Argon2, Block, Params, Version};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::domain::{errors::CryptoError, models::KdfParams, ports::CryptoPort};
@@ -43,14 +43,30 @@ impl AesGcmCrypto {
         kdf: &KdfParams,
         out: &mut [u8; 32],
     ) -> Result<(), CryptoError> {
+        Self::derive_with_memory(password, salt, kdf, out, &mut Vec::new())
+    }
+
+    /// [`Self::derive_into`], with Argon2's working memory in `memory`, which
+    /// is wiped before returning. It holds values derived from the password,
+    /// and its last block alone rebuilds the key; Argon2's own
+    /// `hash_password_into` would free it as it is.
+    pub(crate) fn derive_with_memory(
+        password: &str,
+        salt: &[u8],
+        kdf: &KdfParams,
+        out: &mut [u8; 32],
+        memory: &mut Vec<Block>,
+    ) -> Result<(), CryptoError> {
         let params = Params::new(kdf.m_cost, kdf.t_cost, kdf.p_cost, Some(out.len()))
             .map_err(|_| CryptoError::KeyDerivationError)?;
-        Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
-            .hash_password_into(password.as_bytes(), salt, out)
-            .map_err(|_| {
-                out.zeroize();
-                CryptoError::KeyDerivationError
-            })
+        memory.resize(params.block_count(), Block::new());
+        let result = Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+            .hash_password_into_with_memory(password.as_bytes(), salt, &mut out[..], &mut memory[..]);
+        memory.iter_mut().for_each(Zeroize::zeroize);
+        result.map_err(|_| {
+            out.zeroize();
+            CryptoError::KeyDerivationError
+        })
     }
 }
 

@@ -5,7 +5,7 @@ use anyhow::Result;
 use dialoguer::{FuzzySelect, Select, theme::ColorfulTheme};
 use rustyline::{Editor, error::ReadlineError, history::DefaultHistory};
 use std::io::{self, Write};
-use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 use crate::{
     application::engine::{Upgrade, VaultEngine},
@@ -87,10 +87,8 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
     fn handle_command(&mut self, cmd: Command) -> Result<()> {
         match cmd {
             Command::Unlock(v) => {
-                let mut pw = self.request_password("Vault password: ")?;
-                let result = self.engine.unlock(&v, &pw);
-                pw.zeroize();
-                let upgrade = result?;
+                let pw = self.request_password("Vault password: ")?;
+                let upgrade = self.engine.unlock(&v, &pw)?;
                 println!("Vault '{}' unlocked.", v);
                 match upgrade {
                     Upgrade::None => println!(),
@@ -106,31 +104,23 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             }
 
             Command::Create(v) => {
-                let mut pw = self.request_password("New vault password: ")?;
-                let mut pw2 = self.request_password("Confirm password: ")?;
-                let matches = pw == pw2;
-                pw2.zeroize();
-                if !matches {
-                    pw.zeroize();
+                let pw = self.request_password("New vault password: ")?;
+                let pw2 = self.request_password("Confirm password: ")?;
+                if pw != pw2 {
                     println!("{}Error:{} Passwords do not match.\n", RED, RESET);
                     return Ok(());
                 }
-                let result = self.engine.create_vault(&v, &pw);
-                pw.zeroize();
-                result?;
+                self.engine.create_vault(&v, &pw)?;
                 println!("Vault '{}' created.\n", v);
             }
 
             Command::Add { service, username } => {
-                let mut pw = self.request_password("Service password: ")?;
-                let Some(notes) = self.ask("Notes (optional): ") else {
-                    pw.zeroize();
+                let pw = self.request_password("Service password: ")?;
+                let Some(notes) = self.ask("Notes (optional): ").map(Zeroizing::new) else {
                     println!("Aborted.\n");
                     return Ok(());
                 };
-                let result = self.engine.add(&service, &username, &pw);
-                pw.zeroize();
-                result?;
+                self.engine.add(&service, &username, &pw)?;
                 let notes = notes.trim();
                 if !notes.is_empty() {
                     self.engine.set_notes(&service, notes.to_string())?;
@@ -140,7 +130,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
 
             Command::Update(s) => {
                 // An unknown entry fails right away, before any question.
-                let current_notes = self.engine.get(&s)?.notes.clone();
+                let current_notes = Zeroizing::new(self.engine.get(&s)?.notes.clone());
                 println!("Updating entry '{s}'.");
 
                 let Some(raw) = self.ask("New username (blank to keep): ") else {
@@ -149,24 +139,21 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                 };
                 let new_username = raw.trim().to_string();
 
-                let mut new_pw = self.request_password("New password (blank to keep): ")?;
+                let new_pw = self.request_password("New password (blank to keep): ")?;
 
                 // The current notes come pre-filled, ready to be edited.
-                let Some(notes) = self.ask_with_initial("Notes: ", &current_notes) else {
-                    new_pw.zeroize();
+                let Some(notes) = self.ask_with_initial("Notes: ", &current_notes).map(Zeroizing::new)
+                else {
                     println!("Aborted.\n");
                     return Ok(());
                 };
 
                 let username_opt = if new_username.is_empty() { None } else { Some(new_username) };
-                let passwd_opt   = if new_pw.is_empty()       { None } else { Some(new_pw.clone()) };
+                let passwd_opt   = if new_pw.is_empty()       { None } else { Some(new_pw.to_string()) };
 
-                let result = self
-                    .engine
+                self.engine
                     .update(&s, username_opt, passwd_opt)
-                    .and_then(|()| self.engine.set_notes(&s, notes.trim().to_string()));
-                new_pw.zeroize();
-                result?;
+                    .and_then(|()| self.engine.set_notes(&s, notes.trim().to_string()))?;
                 println!("Entry '{}' updated.\n", s);
             }
 
@@ -216,8 +203,8 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
 
             Command::Gen(length) => {
                 let len = length.unwrap_or(20);
-                let pw = self.engine.gen_password(len)?;
-                println!("Generated: {}{}{}\n", CYAN, pw, RESET);
+                let pw = Zeroizing::new(self.engine.gen_password(len)?);
+                println!("Generated: {}{}{}\n", CYAN, *pw, RESET);
             }
 
             Command::Info => {
@@ -312,21 +299,14 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             }
 
             Command::Passwd => {
-                let mut old_pw = self.request_password("Current password: ")?;
-                let mut new_pw = self.request_password("New password: ")?;
-                let mut new_pw2 = self.request_password("Confirm new password: ")?;
-                let matches = new_pw == new_pw2;
-                new_pw2.zeroize();
-                if !matches {
-                    old_pw.zeroize();
-                    new_pw.zeroize();
+                let old_pw = self.request_password("Current password: ")?;
+                let new_pw = self.request_password("New password: ")?;
+                let new_pw2 = self.request_password("Confirm new password: ")?;
+                if new_pw != new_pw2 {
                     println!("{}Error:{} New passwords do not match.\n", RED, RESET);
                     return Ok(());
                 }
-                let result = self.engine.change_password(&old_pw, &new_pw);
-                old_pw.zeroize();
-                new_pw.zeroize();
-                result?;
+                self.engine.change_password(&old_pw, &new_pw)?;
                 println!("Password changed and vault re-committed.\n");
             }
 
@@ -419,10 +399,12 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
     }
 
     /// Prompts user for password without echoing.
-    fn request_password(&self, label: &str) -> Result<String> {
+    /// Reads a password without echoing it. It is wiped when dropped, on
+    /// every path: a later prompt failing with `?` included.
+    fn request_password(&self, label: &str) -> Result<Zeroizing<String>> {
         print!("{}", label);
         io::stdout().flush()?;
-        Ok(rpassword::read_password()?)
+        Ok(Zeroizing::new(rpassword::read_password()?))
     }
 
     /// Interactive selector: pick an entry (arrows move, typing filters, Esc

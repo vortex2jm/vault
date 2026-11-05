@@ -1,16 +1,21 @@
-use zeroize::Zeroize;
+use std::fmt;
+
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// How many previous passwords an entry keeps.
 pub const HISTORY_LEN: usize = 10;
 
 /// A password an entry used before, and when it was replaced (Unix time).
-#[derive(Debug, Clone, PartialEq, Eq, Zeroize)]
+/// Wiped when dropped.
+#[derive(Clone, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct OldPassword {
     pub passwd: String,
     pub replaced_at: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Zeroize)]
+/// A credential. Wiped when dropped, wherever that happens (`rm`, `lock`,
+/// exiting the program), and its `Debug` output leaves the secrets out.
+#[derive(Clone, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
     pub service: String,
     pub username: String,
@@ -47,7 +52,7 @@ impl Entry {
 
     /// Replaces the username and/or the password. A password that actually
     /// changes goes to the front of the history; the oldest one beyond
-    /// [`HISTORY_LEN`] is wiped and dropped.
+    /// [`HISTORY_LEN`] is dropped, which wipes it.
     pub fn update(&mut self, username: Option<String>, passwd: Option<String>) {
         let now = chrono::Utc::now().timestamp();
         if let Some(u) = username {
@@ -65,14 +70,35 @@ impl Entry {
                         replaced_at: now,
                     },
                 );
-                if self.history.len() > HISTORY_LEN {
-                    for mut dropped in self.history.drain(HISTORY_LEN..) {
-                        dropped.zeroize();
-                    }
-                }
+                self.history.truncate(HISTORY_LEN);
             }
         }
         self.updated_at = now;
+    }
+}
+
+/// Without the secrets: a stray `{:?}` in a panic message or a log would
+/// print them.
+impl fmt::Debug for Entry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Entry")
+            .field("service", &self.service)
+            .field("username", &self.username)
+            .field("passwd", &format_args!("<redacted>"))
+            .field("notes", &format_args!("<redacted>"))
+            .field("history", &self.history)
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
+}
+
+impl fmt::Debug for OldPassword {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OldPassword")
+            .field("passwd", &format_args!("<redacted>"))
+            .field("replaced_at", &self.replaced_at)
+            .finish()
     }
 }
 

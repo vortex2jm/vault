@@ -1,6 +1,7 @@
 //! `AesGcmCrypto`: key derivation, AES-256-GCM and the password generator.
 
 use argon2::{Algorithm, Argon2, Params, Version};
+use zeroize::ZeroizeOnDrop;
 
 use super::support::CHEAP;
 use crate::{
@@ -39,6 +40,27 @@ fn memory_of(crypto: &AesGcmCrypto) -> &[u8] {
             size_of::<AesGcmCrypto>(),
         )
     }
+}
+
+/// Compiles only for types that wipe themselves when dropped.
+fn wiped_on_drop<T: ZeroizeOnDrop>() {}
+
+#[test]
+fn the_cipher_wipes_its_keys_when_dropped() {
+    // A cipher lives only for one encrypt or decrypt. Its AES round keys
+    // contain the key itself, and the aes crate wipes them only with its
+    // `zeroize` feature on.
+    wiped_on_drop::<aes::Aes256>();
+}
+
+#[test]
+fn argon2s_working_memory_is_wiped_after_deriving() {
+    let mut memory = Vec::new();
+    let mut key = [0u8; 32];
+    AesGcmCrypto::derive_with_memory("pw", &SALT, &CHEAP, &mut key, &mut memory).unwrap();
+    assert_eq!(memory.len(), 64, "one 1 KiB block per KiB of memory cost");
+    assert!(memory.iter().all(|block| block.as_ref().iter().all(|&word| word == 0)));
+    assert_eq!(key, derived_key("pw", &CHEAP), "the key itself is unchanged");
 }
 
 #[test]

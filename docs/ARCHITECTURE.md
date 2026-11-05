@@ -40,7 +40,7 @@ src/
 The innermost layer. Contains only:
 
 - **`models.rs`** — Plain data structures:
-  - `Entry` — a single credential (`service`, `username`, `passwd`, `notes`, `history`, `created_at`, `updated_at`). Derives `Zeroize` so it can be wiped from memory on lock.
+  - `Entry` — a single credential (`service`, `username`, `passwd`, `notes`, `history`, `created_at`, `updated_at`). Derives `Zeroize` and `ZeroizeOnDrop`, so it is wiped whenever it is dropped, and its `Debug` output leaves the secrets out.
   - `OldPassword` — a previous password and when it was replaced. `Entry::update` puts the replaced password at the front of `history`, which keeps at most `HISTORY_LEN` (10).
   - `KdfParams` — Argon2id cost (memory, passes, lanes): `DEFAULT` for new keys, `LEGACY` for version-0 files.
   - `VaultState` — what the engine keeps about the open vault's key: its `salt` and `KdfParams`.
@@ -77,7 +77,7 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 |--------|-------------|
 | `create_vault(name, pw)` | Checks the name and the password's length, generates salt, derives key, commits empty state to disk |
 | `unlock(name, pw)` | Loads file, derives key, decrypts entries into memory; rewrites an old-format or cheaper-keyed file at once and reports it as `Upgrade` |
-| `lock()` | Zeroizes entries, clears vault state |
+| `lock()` | Drops the entries (which wipes them), clears vault state, resets the key |
 | `commit()` | Encrypts current entries, saves to disk with fresh nonce |
 | `add(svc, user, pw)` | Inserts a new `Entry`, marks dirty |
 | `delete(svc)` | Removes entry (marks dirty only on success) |
@@ -91,7 +91,7 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 
 Implements `CryptoPort` using:
 
-- **Argon2id** for key derivation from password + salt, at the vault's `KdfParams`
+- **Argon2id** for key derivation from password + salt, at the vault's `KdfParams`, in working memory the adapter allocates and wipes afterwards
 - **`Aes256Gcm`** from the `aes-gcm` crate for AEAD encryption, with the file header as associated data
 - A fresh **random nonce** (via `OsRng`) on every `encrypt` call
 - `ZeroizeOnDrop` on the struct — the key is wiped when it is dropped

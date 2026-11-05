@@ -6,9 +6,9 @@ edition = "2024"
 rust-version = "1.89"
 
 [dependencies]
-aes-gcm = "0.10.3"
+aes-gcm = { version = "0.10.3", features = ["zeroize"] }
 anyhow = "1.0.100"
-argon2 = "0.5.3"
+argon2 = { version = "0.5.3", features = ["zeroize"] }
 arboard = "3"
 chrono = "0.4.41"
 csv = "1"
@@ -19,6 +19,11 @@ rustyline = "17.0.2"
 sha2 = "0.10.9"
 thiserror = "2.0.17"
 zeroize = { version = "1.8.2", features = ["derive"] }
+
+# Not used directly: listed only to turn on its `zeroize` feature, which
+# wipes the AES round keys (they contain the key) when a cipher is dropped.
+# It adds no crate, since aes-gcm already uses it: keep the version in step.
+aes = { version = "0.8.4", features = ["zeroize"] }
 
 # Pseudo-terminal for the end-to-end tests in tests/e2e/.
 [target.'cfg(unix)'.dev-dependencies]

@@ -6,7 +6,7 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroize;
 
 use crate::domain::{
     errors::{StorageError, VaultError},
@@ -298,10 +298,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             return Err(VaultError::Locked);
         }
 
-        for entry in self.entries.values_mut() {
-            entry.zeroize();
-        }
-
+        // Entries wipe themselves when dropped.
         self.entries.clear();
         self.vault_state = None;
         // Reset the derived key so it doesn't linger in memory after locking.
@@ -485,8 +482,9 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         let mut rdr = csv::Reader::from_path(path).map_err(csv_error)?;
         let columns = CsvColumns::find(rdr.headers().map_err(csv_error)?)?;
 
-        // Wiped on the way out, so a failed import leaves no secrets behind.
-        let mut read: Zeroizing<Vec<Entry>> = Zeroizing::new(Vec::new());
+        // Entries wipe themselves when dropped, so a failed import leaves no
+        // secrets behind.
+        let mut read = Vec::new();
         let mut seen = BTreeSet::new();
         for record in rdr.records() {
             let record = record.map_err(csv_error)?;

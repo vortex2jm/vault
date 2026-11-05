@@ -1,6 +1,8 @@
 //! Domain models: `Entry` and `KdfParams`.
 
-use crate::domain::models::{Entry, HISTORY_LEN, KdfParams};
+use zeroize::ZeroizeOnDrop;
+
+use crate::domain::models::{Entry, HISTORY_LEN, KdfParams, OldPassword};
 
 fn github() -> Entry {
     Entry::new("github".into(), "alice".into(), "hunter2".into())
@@ -75,6 +77,29 @@ fn notes_start_empty_and_can_be_replaced() {
     assert_eq!(entry.notes, "2FA on the phone");
     entry.set_notes(String::new());
     assert_eq!(entry.notes, "");
+}
+
+/// Compiles only for types that wipe themselves when dropped.
+fn wiped_on_drop<T: ZeroizeOnDrop>() {}
+
+#[test]
+fn entries_and_their_old_passwords_are_wiped_when_dropped() {
+    // `rm`, `lock`, a failed import and exiting the program all just drop
+    // entries: the type itself makes sure that wipes them.
+    wiped_on_drop::<Entry>();
+    wiped_on_drop::<OldPassword>();
+}
+
+#[test]
+fn debug_output_leaves_the_secrets_out() {
+    let mut entry = github();
+    entry.set_notes("recovery codes 1234".into());
+    entry.update(None, Some("new-secret".into()));
+    let debug = format!("{entry:?}");
+    assert!(debug.contains("github") && debug.contains("alice"), "{debug}");
+    for secret in ["hunter2", "new-secret", "recovery codes"] {
+        assert!(!debug.contains(secret), "{secret:?} in {debug}");
+    }
 }
 
 #[test]
