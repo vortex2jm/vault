@@ -26,7 +26,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 - [x] 🟠 **B5** `AesGcmCrypto::reset()` zeroizes a copy of the key and leaves the original bytes in place.
 - [ ] 🟠 **B6** CSV import maps columns by position (ignores the header), is not atomic (an error mid-file leaves partial entries with `dirty = false`) and accepts service names with spaces that the CLI can't reach.
 - [x] 🟠 **B7** Permissions: CSV export follows the umask and overwrites existing files; `~/.vault` isn't `0700`. (Vaults created before the `0600` change now become `0600` on their next commit, thanks to B2's atomic save.)
-- [ ] 🟠 **B8** After `passwd`, the `.bkp` still opens with the old password until the next commit.
+- [x] 🟠 **B8** After `passwd`, the `.bkp` still opens with the old password until the next commit.
 - [ ] 🟠 **B9** Empty or weak master passwords are accepted (`create`, `passwd`).
 - [x] 🟡 **B10** `gen` has no upper bound: `gen 99999999999` aborts the process and loses uncommitted changes.
 - [ ] 🟡 **B11** Incomplete zeroization: old password dropped on `update`, removed entry dropped on `rm`, no wipe on exit without `lock`, `serialize_into` reallocations, `zeroize` features of `argon2`/`aes-gcm` off, first password leaked when the second prompt fails, `Entry` derives `Debug`.

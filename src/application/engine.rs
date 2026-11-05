@@ -424,7 +424,21 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             vs.salt = new_salt;
         }
 
-        self.commit()?;
-        Ok(())
+        if let Err(e) = self.commit() {
+            // Nothing was saved: go back to the old password, so that a later
+            // commit doesn't switch passwords behind the user's back.
+            if let Some(vs) = self.vault_state.as_mut() {
+                vs.salt = current_salt;
+            }
+            let _ = self.crypto.init(old_password, &current_salt);
+            return Err(e);
+        }
+
+        // That commit moved the previous version, still encrypted with the
+        // old password, into the backup. Commit once more so the backup is
+        // under the new password too: if the old one leaked, nothing on disk
+        // should open with it anymore.
+        self.commit()
+            .map_err(|e| VaultError::StaleBackup(e.to_string()))
     }
 }

@@ -117,7 +117,7 @@ A crash or power loss at any point leaves each file either in its old state or i
 | Root/kernel-level memory access | Not mitigated — memory zeroization is best-effort in most OS environments |
 | Side-channel attacks (timing, cache) | Not specifically hardened |
 | Swap / hibernation leaking secrets | Not mitigated — use encrypted swap / disable hibernation |
-| `.bkp` file left on disk | Backup is not deleted after a successful write — contains previous vault version |
+| `.bkp` file left on disk | Backup is not deleted after a successful write — it holds the previous vault version. After `passwd` it is rewritten under the new password, so the old password no longer opens anything |
 
 ---
 

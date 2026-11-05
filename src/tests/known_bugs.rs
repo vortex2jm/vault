@@ -10,7 +10,6 @@
 use std::fs;
 
 use super::support::{TempDir, created, engine, path_str};
-use crate::domain::errors::VaultError;
 
 #[test]
 #[ignore = "B3: payloads over 4 MiB commit but never open again"]
@@ -65,27 +64,6 @@ fn b6_import_must_leave_a_consistent_state() {
             assert!(engine.is_dirty());
         }
     }
-}
-
-#[test]
-#[ignore = "B8: after passwd, the .bkp still opens with the old password"]
-fn b8_backup_must_not_open_with_the_old_password() {
-    let dir = TempDir::new();
-    let mut engine = created(&dir, "personal", "old");
-    engine.add("github", "alice", "hunter2").unwrap();
-    engine.commit().unwrap();
-    engine.change_password("old", "new").unwrap();
-    engine.lock().unwrap();
-
-    let backup = dir.file("personal.bkp");
-    if !backup.exists() {
-        return; // removing the old backup is a valid fix
-    }
-    fs::copy(&backup, dir.file("from-backup.vault")).unwrap();
-    assert!(matches!(
-        engine.unlock("from-backup", "old"),
-        Err(VaultError::InvalidPassword)
-    ));
 }
 
 #[test]

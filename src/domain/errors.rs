@@ -41,6 +41,12 @@ pub enum VaultError {
     )]
     ChangedOnDisk,
 
+    #[error(
+        "Password changed, but the backup could not be refreshed ({0}) and still \
+         opens with the old password: run commit again"
+    )]
+    StaleBackup(String),
+
     #[error("Cryptography error: {0}")]
     Crypto(#[from] CryptoError),
 

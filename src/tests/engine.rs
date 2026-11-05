@@ -1,6 +1,6 @@
 //! `VaultEngine` flows, with the real adapters on a temporary directory.
 
-use std::fs;
+use std::{cell::Cell, fs, rc::Rc};
 
 use super::support::{TempDir, created, engine, path_str};
 use crate::{
@@ -12,33 +12,59 @@ use crate::{
     },
 };
 
-/// Storage whose saves always hit a conflict, to reach the error paths.
-struct ConflictingSaves(FileStorage);
+/// Real storage whose saves start failing once `saves_left` reaches zero,
+/// to reach the error paths. `usize::MAX` never runs out.
+struct FailingSaves {
+    inner: FileStorage,
+    saves_left: Rc<Cell<usize>>,
+}
 
-impl StoragePort for ConflictingSaves {
+impl FailingSaves {
+    /// An engine on `dir` allowing `saves` saves, and the counter to change
+    /// that later.
+    fn engine(
+        dir: &TempDir,
+        saves: usize,
+    ) -> (VaultEngine<FailingSaves, AesGcmCrypto>, Rc<Cell<usize>>) {
+        let saves_left = Rc::new(Cell::new(saves));
+        let storage = FailingSaves {
+            inner: FileStorage::with_base_path(dir.path().to_path_buf()),
+            saves_left: Rc::clone(&saves_left),
+        };
+        (VaultEngine::new(storage, AesGcmCrypto::new()), saves_left)
+    }
+}
+
+impl StoragePort for FailingSaves {
     fn exists(&self) -> bool {
-        self.0.exists()
+        self.inner.exists()
     }
     fn set_path(&mut self, path: String) {
-        self.0.set_path(path)
+        self.inner.set_path(path)
     }
     fn get_path(&self) -> Option<String> {
-        self.0.get_path()
+        self.inner.get_path()
     }
     fn load(&mut self) -> Result<Vec<u8>, StorageError> {
-        self.0.load()
+        self.inner.load()
     }
-    fn save(&mut self, _: &[u8]) -> Result<(), StorageError> {
-        Err(StorageError::Conflict)
+    fn save(&mut self, data: &[u8]) -> Result<(), StorageError> {
+        match self.saves_left.get() {
+            0 => Err(StorageError::Conflict),
+            n => {
+                self.saves_left.set(n - 1);
+                self.inner.save(data)
+            }
+        }
     }
     fn list_vaults(&self) -> Result<Vec<String>, StorageError> {
-        self.0.list_vaults()
+        self.inner.list_vaults()
     }
     fn rename(&mut self, new_name: String) -> Result<(), StorageError> {
-        self.0.rename(new_name)
+        self.inner.rename(new_name)
     }
     fn delete(&self, name: String) -> Result<(), StorageError> {
-        self.0.delete(name)
+        self.inner.delete(name)
     }
 }
 
@@ -146,8 +172,7 @@ fn a_stale_session_cannot_overwrite_newer_changes() {
 #[test]
 fn a_create_that_cannot_be_saved_leaves_the_engine_locked() {
     let dir = TempDir::new();
-    let storage = ConflictingSaves(FileStorage::with_base_path(dir.path().to_path_buf()));
-    let mut engine = VaultEngine::new(storage, AesGcmCrypto::new());
+    let (mut engine, _) = FailingSaves::engine(&dir, 0);
 
     assert!(matches!(engine.create_vault("personal", "pw"), Err(VaultError::ChangedOnDisk)));
     assert!(engine.is_locked());
@@ -271,6 +296,58 @@ fn change_password_requires_the_current_one_and_re_encrypts() {
     assert!(matches!(engine.unlock("personal", "old"), Err(VaultError::InvalidPassword)));
     engine.unlock("personal", "new").unwrap();
     assert_eq!(engine.get("github").unwrap().passwd, "hunter2");
+}
+
+#[test]
+fn passwd_moves_the_backup_to_the_new_password_too() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "personal", "old");
+    engine.add("github", "alice", "hunter2").unwrap();
+    engine.commit().unwrap();
+    engine.change_password("old", "new").unwrap();
+    engine.lock().unwrap();
+
+    // The backup still works, but only with the new password (B8).
+    fs::copy(dir.file("personal.bkp"), dir.file("from-backup.vault")).unwrap();
+    assert!(matches!(engine.unlock("from-backup", "old"), Err(VaultError::InvalidPassword)));
+    engine.unlock("from-backup", "new").unwrap();
+    assert_eq!(engine.get("github").unwrap().passwd, "hunter2");
+}
+
+#[test]
+fn a_passwd_that_cannot_be_saved_keeps_the_old_password() {
+    let dir = TempDir::new();
+    let (mut engine, saves_left) = FailingSaves::engine(&dir, usize::MAX);
+    engine.create_vault("personal", "old").unwrap();
+    saves_left.set(0);
+    assert!(engine.change_password("old", "new").is_err());
+
+    // A later commit must not switch to the new password behind the user's back.
+    saves_left.set(usize::MAX);
+    engine.add("github", "alice", "hunter2").unwrap();
+    engine.commit().unwrap();
+    engine.lock().unwrap();
+    assert!(matches!(engine.unlock("personal", "new"), Err(VaultError::InvalidPassword)));
+    engine.unlock("personal", "old").unwrap();
+}
+
+#[test]
+fn a_passwd_whose_backup_cannot_be_refreshed_says_so() {
+    let dir = TempDir::new();
+    let (mut engine, saves_left) = FailingSaves::engine(&dir, usize::MAX);
+    engine.create_vault("personal", "old").unwrap();
+    saves_left.set(1); // the password change is saved, the backup refresh isn't
+    assert!(matches!(engine.change_password("old", "new"), Err(VaultError::StaleBackup(_))));
+
+    // The password did change, and committing again fixes the backup.
+    saves_left.set(usize::MAX);
+    engine.commit().unwrap();
+    engine.lock().unwrap();
+    engine.unlock("personal", "new").unwrap();
+    engine.lock().unwrap();
+    fs::copy(dir.file("personal.bkp"), dir.file("from-backup.vault")).unwrap();
+    assert!(matches!(engine.unlock("from-backup", "old"), Err(VaultError::InvalidPassword)));
+    engine.unlock("from-backup", "new").unwrap();
 }
 
 #[test]
