@@ -11,7 +11,8 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **Multiple named vaults** — one per context (work, personal, etc.)
 - **Tab-completion** of commands, entry names, vault names and file paths, and **command history** in the interactive shell
 - **Interactive selector** (`find`): browse your entries with the arrow keys and fuzzy search
-- **Automatic backup + SHA-256 integrity check** before every write
+- **Crash-safe saves**: every commit writes a new file and atomically swaps it in, keeping the previous version as a backup
+- **Safe across sessions**: open the same vault in two terminals; a commit never overwrites what the other one saved
 - **Strict Security**: Memory zeroization (secrets never linger), `0o600` restrictive file permissions (Unix), and path traversal protection.
 - **Zero network access** — entirely offline
 
@@ -19,7 +20,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 
 ## Requirements
 
-- Rust toolchain ≥ 1.85 (edition 2024)
+- Rust toolchain ≥ 1.89 (edition 2024)
 - **Linux/Unix**: `x11` or `wayland` clipboard dependencies (for the `copy` command via `arboard`)
 
 ---
@@ -120,8 +121,9 @@ All vault files are stored in `~/.vault/` (with strict `0o600` permissions on Un
 
 ```text
 ~/.vault/
+├── .lock              # taken during each commit, so sessions never write at once
 ├── personal.vault     # encrypted vault
-├── personal.bkp       # backup (created before each write)
+├── personal.bkp       # previous version, kept by each commit
 └── work.vault
 ```
 

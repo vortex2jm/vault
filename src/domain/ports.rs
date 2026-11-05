@@ -16,8 +16,12 @@ pub trait StoragePort {
     fn exists(&self) -> bool;
     fn set_path(&mut self, path: String);
     fn get_path(&self) -> Option<String>;
-    fn load(&self) -> Result<Vec<u8>, StorageError>;
-    fn save(&self, data: &[u8]) -> Result<(), StorageError>;
+    /// Reads the current vault file.
+    fn load(&mut self) -> Result<Vec<u8>, StorageError>;
+    /// Replaces the current vault file with `data`, atomically, keeping the
+    /// previous version as a backup. Fails with `StorageError::Conflict` if
+    /// the file changed since this session last loaded or saved it.
+    fn save(&mut self, data: &[u8]) -> Result<(), StorageError>;
     fn list_vaults(&self) -> Result<Vec<String>, StorageError>;
     /// Renames the current vault file (and its backup) to `new_name`. Fails
     /// with `StorageError::AlreadyExists` if another vault has that name.

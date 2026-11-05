@@ -2,6 +2,8 @@
 name = "vault"
 version = "0.1.0"
 edition = "2024"
+# File locking in std (File::lock) needs 1.89.
+rust-version = "1.89"
 
 [dependencies]
 aes-gcm = "0.10.3"

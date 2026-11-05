@@ -98,18 +98,23 @@ Implements `CryptoPort` using:
 
 Implements `StoragePort` using the local filesystem under `~/.vault/`.
 
-#### Write Protocol (defensive)
+#### Write Protocol (atomic, safe across sessions)
 
 ```
-1. Ensure ~/.vault/ directory exists
-2. If vault file already exists:
-   a. Copy it to <name>.bkp
-   b. SHA-256 hash both files
-   c. Abort with IntegrityError if hashes differ
-3. Write new content to <name>.vault
-4. fsync the file
-5. If write fails: restore from .bkp
+1. Ensure ~/.vault/ exists and take ~/.vault/.lock (flock): commits from
+   every session run one at a time
+2. Read the current <name>.vault; if its SHA-256 differs from the version this
+   session last loaded or saved, abort with StorageError::Conflict
+   (another session saved in the meantime; nothing is written)
+3. Write the current version to <name>.bkp, atomically (see below)
+4. Write the new content to <name>.vault, atomically
+5. Remember the new content's SHA-256; release the lock
+
+Atomic write: write <file>.tmp (mode 0600) → fsync it → rename it over <file>
+→ fsync the directory. A crash leaves either the old file or the new one.
 ```
+
+Several sessions can have the same vault open; only a stale commit is refused.
 
 #### `get_path()` — returns the vault **stem** (e.g. `"personal"`), not the full filesystem path, so the prompt displays cleanly.
 

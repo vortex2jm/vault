@@ -13,33 +13,6 @@ use super::support::{TempDir, created, engine, path_str};
 use crate::domain::errors::VaultError;
 
 #[test]
-#[ignore = "B2: with two sessions on the same vault, the last commit wins"]
-fn b2_a_second_session_must_not_drop_the_first_ones_commit() {
-    let dir = TempDir::new();
-    created(&dir, "shared", "pw").lock().unwrap();
-
-    let mut first = engine(&dir);
-    first.unlock("shared", "pw").unwrap();
-    let mut second = engine(&dir);
-    if second.unlock("shared", "pw").is_err() {
-        return; // refusing a second session is a valid fix
-    }
-
-    first.add("from-first", "u", "p").unwrap();
-    first.commit().unwrap();
-    second.add("from-second", "u", "p").unwrap();
-    if second.commit().is_err() {
-        return; // refusing a stale commit is a valid fix
-    }
-    first.lock().unwrap();
-    second.lock().unwrap();
-
-    let mut check = engine(&dir);
-    check.unlock("shared", "pw").unwrap();
-    assert!(check.get("from-first").is_ok(), "the first session's entry was dropped");
-}
-
-#[test]
 #[ignore = "B3: payloads over 4 MiB commit but never open again"]
 fn b3_a_committed_vault_must_always_reopen() {
     let dir = TempDir::new();
@@ -96,7 +69,7 @@ fn b6_import_must_leave_a_consistent_state() {
 
 #[cfg(unix)]
 mod permissions {
-    use std::{fs, os::unix::fs::PermissionsExt};
+    use std::fs;
 
     use super::super::support::{TempDir, created, engine_at, mode, path_str};
 
@@ -126,19 +99,6 @@ mod permissions {
         let base = dir.file("vaults");
         engine_at(&base).create_vault("personal", "pw").unwrap();
         assert_eq!(mode(&base), 0o700);
-    }
-
-    #[test]
-    #[ignore = "B7: vaults created before the 0600 change keep their old mode"]
-    fn b7_commit_must_make_an_old_vault_private() {
-        let dir = TempDir::new();
-        let mut engine = created(&dir, "personal", "pw");
-        let file = dir.file("personal.vault");
-        fs::set_permissions(&file, fs::Permissions::from_mode(0o664)).unwrap();
-
-        engine.add("github", "alice", "hunter2").unwrap();
-        engine.commit().unwrap();
-        assert_eq!(mode(&file), 0o600);
     }
 }
 

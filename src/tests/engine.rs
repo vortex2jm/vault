@@ -4,9 +4,43 @@ use std::fs;
 
 use super::support::{TempDir, created, engine, path_str};
 use crate::{
-    application::engine::{MAX_GENERATED_LENGTH, MIN_GENERATED_LENGTH},
-    domain::errors::VaultError,
+    adapters::{aes_crypto::AesGcmCrypto, file_storage::FileStorage},
+    application::engine::{MAX_GENERATED_LENGTH, MIN_GENERATED_LENGTH, VaultEngine},
+    domain::{
+        errors::{StorageError, VaultError},
+        ports::StoragePort,
+    },
 };
+
+/// Storage whose saves always hit a conflict, to reach the error paths.
+struct ConflictingSaves(FileStorage);
+
+impl StoragePort for ConflictingSaves {
+    fn exists(&self) -> bool {
+        self.0.exists()
+    }
+    fn set_path(&mut self, path: String) {
+        self.0.set_path(path)
+    }
+    fn get_path(&self) -> Option<String> {
+        self.0.get_path()
+    }
+    fn load(&mut self) -> Result<Vec<u8>, StorageError> {
+        self.0.load()
+    }
+    fn save(&mut self, _: &[u8]) -> Result<(), StorageError> {
+        Err(StorageError::Conflict)
+    }
+    fn list_vaults(&self) -> Result<Vec<String>, StorageError> {
+        self.0.list_vaults()
+    }
+    fn rename(&mut self, new_name: String) -> Result<(), StorageError> {
+        self.0.rename(new_name)
+    }
+    fn delete(&self, name: String) -> Result<(), StorageError> {
+        self.0.delete(name)
+    }
+}
 
 #[test]
 fn create_leaves_the_vault_unlocked_and_on_disk() {
@@ -80,6 +114,44 @@ fn uncommitted_changes_are_discarded_by_lock() {
 
     engine.unlock("personal", "pw").unwrap();
     assert!(engine.get_entries().unwrap().is_empty());
+}
+
+#[test]
+fn a_stale_session_cannot_overwrite_newer_changes() {
+    let dir = TempDir::new();
+    created(&dir, "shared", "pw").lock().unwrap();
+    let mut first = engine(&dir);
+    first.unlock("shared", "pw").unwrap();
+    let mut second = engine(&dir);
+    second.unlock("shared", "pw").unwrap(); // reading at the same time is fine
+
+    first.add("from-first", "u", "p").unwrap();
+    first.commit().unwrap();
+    second.add("from-second", "u", "p").unwrap();
+    assert!(matches!(second.commit(), Err(VaultError::ChangedOnDisk)));
+    assert!(second.is_dirty(), "the unsaved change must still be there");
+
+    // Reopening shows the other session's commit, and saving works again.
+    second.lock().unwrap();
+    second.unlock("shared", "pw").unwrap();
+    assert!(second.get("from-first").is_ok());
+    second.add("from-second", "u", "p").unwrap();
+    second.commit().unwrap();
+
+    first.lock().unwrap();
+    first.unlock("shared", "pw").unwrap();
+    assert_eq!(first.get_entries().unwrap(), ["from-first", "from-second"]);
+}
+
+#[test]
+fn a_create_that_cannot_be_saved_leaves_the_engine_locked() {
+    let dir = TempDir::new();
+    let storage = ConflictingSaves(FileStorage::with_base_path(dir.path().to_path_buf()));
+    let mut engine = VaultEngine::new(storage, AesGcmCrypto::new());
+
+    assert!(matches!(engine.create_vault("personal", "pw"), Err(VaultError::ChangedOnDisk)));
+    assert!(engine.is_locked());
+    assert!(matches!(engine.add("s", "u", "p"), Err(VaultError::Locked)));
 }
 
 #[test]

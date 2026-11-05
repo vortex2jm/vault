@@ -41,6 +41,39 @@ fn exit_offers_to_commit_pending_changes() {
 }
 
 #[test]
+fn a_stale_session_cannot_overwrite_newer_changes() {
+    let home = TempDir::new();
+    let mut first = Session::start(home.path());
+    first.create("shared", "pw");
+    let mut second = Session::start(home.path());
+    second.unlock("shared", "pw");
+
+    first.add("from-first", "u", "p");
+    first.command("commit");
+    first.expect("Changes committed.");
+    second.add("from-second", "u", "p");
+    second.command("commit");
+    assert!(second.output().contains("changed on disk"));
+
+    // "Commit and exit" fails the same way, and keeps the session open
+    // instead of quitting with the changes.
+    second.command("exit");
+    second.answer(MENU, "1");
+    second.expect("changed on disk");
+    assert_eq!(second.command("exit"), "vault[shared*|1]> ");
+    second.answer(MENU, "2");
+    assert!(second.wait().success());
+    first.exit();
+
+    let mut check = Session::start(home.path());
+    check.unlock("shared", "pw");
+    check.command("ls");
+    let out = check.output();
+    assert!(out.contains("from-first") && !out.contains("from-second"), "{out}");
+    check.exit();
+}
+
+#[test]
 fn exit_can_be_cancelled_or_discard_changes() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());

@@ -32,6 +32,12 @@ pub enum VaultError {
     #[error("Invalid password or corrupted vault")]
     InvalidPassword,
 
+    #[error(
+        "The vault changed on disk since it was opened (another session?). \
+         Nothing was saved: lock and unlock it to reload"
+    )]
+    ChangedOnDisk,
+
     #[error("Cryptography error: {0}")]
     Crypto(#[from] CryptoError),
 
@@ -44,11 +50,11 @@ pub enum StorageError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Integrity check failed")]
-    IntegrityError,
-
     #[error("Target already exists")]
     AlreadyExists,
+
+    #[error("The file changed since it was last read")]
+    Conflict,
 }
 
 #[derive(Debug, Error)]

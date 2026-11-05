@@ -304,15 +304,24 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             println!("3) Cancel\n");
 
             match self.ask("Choose an option [1-3]: ").as_deref().map(str::trim) {
-                Some("1") => {
-                    self.engine.commit()?;
-                    Ok(true)
-                }
+                Some("1") => Ok(self.commit_before_leaving()),
                 Some("2") => Ok(true),
                 _ => Ok(false),
             }
         } else {
             Ok(true)
+        }
+    }
+
+    /// Commits for the exit and lock menus. If that fails, says why and keeps
+    /// the session open, instead of leaving and losing the changes.
+    fn commit_before_leaving(&mut self) -> bool {
+        match self.engine.commit() {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("Error: {e}\n");
+                false
+            }
         }
     }
 
@@ -324,10 +333,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             println!("3) Cancel\n");
 
             match self.ask("Choose an option [1-3]: ").as_deref().map(str::trim) {
-                Some("1") => {
-                    self.engine.commit()?;
-                    Ok(true)
-                }
+                Some("1") => Ok(self.commit_before_leaving()),
                 Some("2") => Ok(true),
                 _ => Ok(false),
             }

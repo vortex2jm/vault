@@ -92,7 +92,13 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             return Err(e.into());
         }
 
-        self.commit()?;
+        if let Err(e) = self.commit() {
+            // Nothing was written: stay locked instead of looking open on a
+            // vault that isn't on disk.
+            self.vault_state = None;
+            self.crypto.reset();
+            return Err(e);
+        }
 
         Ok(())
     }
@@ -117,7 +123,12 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         wincode::serialize_into(&mut vault_buffer, vault_state)
             .map_err(|_| VaultError::Serialization)?;
 
-        self.storage.save(&vault_buffer)?;
+        self.storage
+            .save(&vault_buffer)
+            .map_err(|e| match e {
+                StorageError::Conflict => VaultError::ChangedOnDisk,
+                other => other.into(),
+            })?;
 
         self.dirty = false;
         Ok(())
