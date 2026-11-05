@@ -33,6 +33,7 @@ fn tab_chains_a_command_and_its_argument() {
     s.keys(&[b"up".as_slice(), TAB, b"gi", TAB, b"\r"].concat());
     s.answer("New username (blank to keep): ", "");
     s.answer("New password (blank to keep): ", "");
+    s.answer("Notes: ", ""); // Enter keeps the pre-filled notes
     s.expect("Entry 'github' updated.");
     s.exit_discarding();
 }
@@ -98,6 +99,7 @@ fn arrow_keys_edit_the_update_prompt() {
     // to end up in the username as escape sequences (B4).
     s.send(&[CTRL_U, b"bob", LEFT, b"X\r"].concat());
     s.answer("New password (blank to keep): ", "");
+    s.answer("Notes: ", ""); // Enter keeps the pre-filled notes
     s.expect("Entry 'site' updated.");
     s.command("get site");
     let out = s.output();
@@ -143,6 +145,7 @@ fn tab_does_not_offer_commands_in_answers() {
     s.expect("New username (blank to keep): ");
     s.send(&[b"c".as_slice(), TAB, b"\r"].concat());
     s.answer("New password (blank to keep): ", "");
+    s.answer("Notes: ", ""); // Enter keeps the pre-filled notes
     s.expect("Entry 'github' updated.");
     s.command("get github");
     let out = s.output();

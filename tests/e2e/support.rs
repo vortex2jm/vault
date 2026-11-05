@@ -251,10 +251,17 @@ impl Session {
         self.expect(&format!("Vault '{name}' unlocked."));
     }
 
-    /// `add <service> <username>`, answering the password prompt.
+    /// `add <service> <username>`, answering the password prompt and
+    /// skipping the notes.
     pub fn add(&mut self, service: &str, username: &str, password: &str) {
+        self.add_with_notes(service, username, password, "");
+    }
+
+    /// `add <service> <username>`, answering the password and notes prompts.
+    pub fn add_with_notes(&mut self, service: &str, username: &str, password: &str, notes: &str) {
         self.command(&format!("add {service} {username}"));
         self.answer("Service password: ", password);
+        self.answer("Notes (optional): ", notes);
         self.expect(&format!("Entry '{service}' added."));
     }
 

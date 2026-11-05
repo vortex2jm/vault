@@ -30,6 +30,16 @@ fn update_replaces_only_the_given_fields() {
 }
 
 #[test]
+fn notes_start_empty_and_can_be_replaced() {
+    let mut entry = github();
+    assert_eq!(entry.notes, "");
+    entry.set_notes("2FA on the phone".into());
+    assert_eq!(entry.notes, "2FA on the phone");
+    entry.set_notes(String::new());
+    assert_eq!(entry.notes, "");
+}
+
+#[test]
 fn a_cost_is_weaker_if_it_takes_less_memory_or_fewer_passes() {
     let base = KdfParams { m_cost: 1024, t_cost: 2, p_cost: 1 };
     assert!(KdfParams { m_cost: 512, ..base }.is_weaker_than(&base));

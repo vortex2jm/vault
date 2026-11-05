@@ -123,13 +123,24 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
 
             Command::Add { service, username } => {
                 let mut pw = self.request_password("Service password: ")?;
+                let Some(notes) = self.ask("Notes (optional): ") else {
+                    pw.zeroize();
+                    println!("Aborted.\n");
+                    return Ok(());
+                };
                 let result = self.engine.add(&service, &username, &pw);
                 pw.zeroize();
                 result?;
+                let notes = notes.trim();
+                if !notes.is_empty() {
+                    self.engine.set_notes(&service, notes.to_string())?;
+                }
                 println!("Entry '{}' added.\n", service);
             }
 
             Command::Update(s) => {
+                // An unknown entry fails right away, before any question.
+                let current_notes = self.engine.get(&s)?.notes.clone();
                 println!("Updating entry '{s}'.");
 
                 let Some(raw) = self.ask("New username (blank to keep): ") else {
@@ -139,12 +150,21 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                 let new_username = raw.trim().to_string();
 
                 let mut new_pw = self.request_password("New password (blank to keep): ")?;
-                println!();
+
+                // The current notes come pre-filled, ready to be edited.
+                let Some(notes) = self.ask_with_initial("Notes: ", &current_notes) else {
+                    new_pw.zeroize();
+                    println!("Aborted.\n");
+                    return Ok(());
+                };
 
                 let username_opt = if new_username.is_empty() { None } else { Some(new_username) };
                 let passwd_opt   = if new_pw.is_empty()       { None } else { Some(new_pw.clone()) };
 
-                let result = self.engine.update(&s, username_opt, passwd_opt);
+                let result = self
+                    .engine
+                    .update(&s, username_opt, passwd_opt)
+                    .and_then(|()| self.engine.set_notes(&s, notes.trim().to_string()));
                 new_pw.zeroize();
                 result?;
                 println!("Entry '{}' updated.\n", s);
@@ -166,10 +186,11 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
 
             Command::Get(s) => {
                 let e = self.engine.get(&s)?;
-                println!(
-                    "{}\n  user: {}\n  pass: {}\n",
-                    e.service, e.username, e.passwd
-                );
+                println!("{}\n  user: {}\n  pass: {}", e.service, e.username, e.passwd);
+                if !e.notes.is_empty() {
+                    println!("  notes: {}", e.notes);
+                }
+                println!();
             }
 
             Command::Copy(s) => {
@@ -451,6 +472,11 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
         self.answers.readline(question).ok()
     }
 
+    /// Like [`Self::ask`], with `initial` already typed in, ready to edit.
+    fn ask_with_initial(&mut self, question: &str, initial: &str) -> Option<String> {
+        self.answers.readline_with_initial(question, (initial, "")).ok()
+    }
+
     fn print_help() {
         println!(
             r#"
@@ -459,11 +485,11 @@ unlock <name>        Unlock vault
 lock                 Lock vault
 passwd               Change vault master password
 drop <name>          Permanently delete a vault (must be locked first)
-add <svc> <user>     Add entry
-get <svc>            Show entry (user + pass)
+add <svc> <user>     Add entry (asks for its password and optional notes)
+get <svc>            Show entry (user, pass, notes)
 find [term]          Pick an entry from a list (arrows, type to filter)
 copy <svc>           Copy password to clipboard
-update <svc>         Update username/password of entry
+update <svc>         Update username, password or notes of entry
 rm <svc>             Remove entry
 commit               Save changes to disk
 rename <new>         Rename current vault

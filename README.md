@@ -57,6 +57,7 @@ Generated: K9#mP2$qLv8nW!j&
 
 vault[personal|0]> add github myuser
 Service password: ••••••••
+Notes (optional): 2FA on my phone
 Entry 'github' added.
 
 vault[personal*|1]> commit
@@ -84,11 +85,11 @@ vault[locked]>
 | `passwd` | — | Change the current vault's master password |
 | `drop` | `<name>` | Permanently delete a vault and its backup (vault must be locked) |
 | **Entries** |
-| `add` | `<service> <user>` | Add a credential entry |
-| `get` | `<service>` | Show a credential entry (username and password) |
+| `add` | `<service> <user>` | Add a credential entry (asks for its password and optional notes) |
+| `get` | `<service>` | Show a credential entry (username, password and notes) |
 | `find` | `[term]` | Pick an entry from an interactive list (↑/↓ to move, type to filter), then copy, show, update or remove it |
 | `copy` | `<service>` | Copy a password directly to the OS clipboard |
-| `update` | `<service>` | Update username/password of an entry (leave blank to keep current) |
+| `update` | `<service>` | Update an entry: blank keeps the username or password; the notes come pre-filled to edit |
 | `rm` | `<service>` | Remove a credential entry |
 | `gen` | `[length]` | Generate a random strong password (8–256 chars, default: 20) |
 | **Data & I/O** |
@@ -127,7 +128,7 @@ All vault files are stored in `~/.vault/`. On Unix the directory is `0700` and e
 └── work.vault
 ```
 
-Each `.vault` file (format v1) is a small header followed by the encrypted entries:
+Each `.vault` file (format v2) is a small header followed by the encrypted entries (service, username, password, notes and timestamps):
 
 - `VAULT\0` and the format version;
 - the Argon2id cost used for this vault's key (memory, passes, lanes);
@@ -135,7 +136,7 @@ Each `.vault` file (format v1) is a small header followed by the encrypted entri
 - `nonce`: 12 random bytes, new at every commit;
 - the AES-256-GCM ciphertext of the entries. The header is authenticated with it, so changing any byte makes the vault refuse to open.
 
-Vaults written before the versioned format (v0) still open. On unlock they are rewritten as v1 with a stronger key, and the previous file stays as the `.bkp` until the next commit. The byte-level layout is in [docs/SECURITY.md](docs/SECURITY.md#on-disk-format).
+Vaults written by older versions (v0, v1) still open. On unlock they are rewritten in the current format, with a stronger key if theirs was cheaper, and the previous file stays as the `.bkp` until the next commit. The byte-level layout is in [docs/SECURITY.md](docs/SECURITY.md#on-disk-format).
 
 ---
 
@@ -144,12 +145,12 @@ Vaults written before the versioned format (v0) still open. On unlock they are r
 The `export` and `import` commands use standard RFC 4180 CSV files with the following header:
 
 ```csv
-service,username,password
+service,username,password,notes
 github,myuser,mysecret123
 aws,admin,super_secure!
 ```
 
-*Note: Importing merges entries. If a service already exists in the vault, the imported row is skipped.*
+*Note: Importing merges entries. If a service already exists in the vault, the imported row is skipped. Files without the `notes` column (exports from older versions) import with empty notes.*
 
 ---
 

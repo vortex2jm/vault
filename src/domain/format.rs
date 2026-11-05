@@ -1,6 +1,6 @@
 //! The vault file format, byte by byte. Pure functions, no I/O.
 //!
-//! Version 1, written by this version:
+//! Versions 1 and 2 share this layout (2 is written by this version):
 //!
 //! | bytes | field                                         |
 //! |-------|-----------------------------------------------|
@@ -21,19 +21,23 @@
 //! ciphertext length (u64 LE) | ciphertext. Its key was derived with
 //! [`KdfParams::LEGACY`], and there is no associated data.
 //!
-//! The plaintext is the same in both versions: the entry count (u64 LE),
-//! then for each entry its service name once more as the map key, followed
-//! by service, username, password, created_at (i64 LE) and updated_at
-//! (i64 LE). A string is its byte length (u64 LE) followed by UTF-8. Every
-//! length is checked against the bytes actually present, so there is no
-//! arbitrary size limit and nothing is allocated for a length that lies.
+//! The plaintext is the entry count (u64 LE), then for each entry its
+//! service name once more as the map key, followed by service, username,
+//! password, notes (version 2 and later only), created_at (i64 LE) and
+//! updated_at (i64 LE). A string is its byte length (u64 LE) followed by
+//! UTF-8. Every length is checked against the bytes actually present, so
+//! there is no arbitrary size limit and nothing is allocated for a length
+//! that lies.
 
 use std::collections::BTreeMap;
 
 use crate::domain::models::{Entry, KdfParams};
 
 pub const MAGIC: [u8; 6] = *b"VAULT\0";
-pub const CURRENT_VERSION: u16 = 1;
+pub const CURRENT_VERSION: u16 = 2;
+
+/// First version whose entries have notes.
+const NOTES_SINCE: u16 = 2;
 
 const ARGON2ID: u8 = 1;
 
@@ -115,13 +119,14 @@ pub fn encode_entries(entries: &BTreeMap<String, Entry>) -> Vec<u8> {
     let size = 8 + entries
         .iter()
         .map(|(key, e)| {
-            4 * 8 + key.len() + e.service.len() + e.username.len() + e.passwd.len() + 2 * 8
+            let texts = [key, &e.service, &e.username, &e.passwd, &e.notes];
+            texts.iter().map(|text| 8 + text.len()).sum::<usize>() + 2 * 8
         })
         .sum::<usize>();
     let mut out = Vec::with_capacity(size);
     out.extend_from_slice(&(entries.len() as u64).to_le_bytes());
     for (key, entry) in entries {
-        for text in [key, &entry.service, &entry.username, &entry.passwd] {
+        for text in [key, &entry.service, &entry.username, &entry.passwd, &entry.notes] {
             out.extend_from_slice(&(text.len() as u64).to_le_bytes());
             out.extend_from_slice(text.as_bytes());
         }
@@ -132,8 +137,9 @@ pub fn encode_entries(entries: &BTreeMap<String, Entry>) -> Vec<u8> {
     out
 }
 
-/// Parses the plaintext written by [`encode_entries`] (or by version 0).
-pub fn decode_entries(bytes: &[u8]) -> Result<BTreeMap<String, Entry>, FormatError> {
+/// Parses the plaintext of a file in format `version`: written by
+/// [`encode_entries`] for the current one, without notes before version 2.
+pub fn decode_entries(bytes: &[u8], version: u16) -> Result<BTreeMap<String, Entry>, FormatError> {
     let mut reader = Reader { bytes };
     let count = reader.u64()?;
     let mut entries = BTreeMap::new();
@@ -144,6 +150,11 @@ pub fn decode_entries(bytes: &[u8]) -> Result<BTreeMap<String, Entry>, FormatErr
             service: reader.string()?,
             username: reader.string()?,
             passwd: reader.string()?,
+            notes: if version >= NOTES_SINCE {
+                reader.string()?
+            } else {
+                String::new()
+            },
             created_at: reader.i64()?,
             updated_at: reader.i64()?,
         };

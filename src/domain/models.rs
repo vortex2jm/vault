@@ -5,6 +5,8 @@ pub struct Entry {
     pub service: String,
     pub username: String,
     pub passwd: String,
+    /// Free text about the entry; empty when there is none.
+    pub notes: String,
     pub(crate) created_at: i64,
     pub(crate) updated_at: i64,
 }
@@ -16,9 +18,18 @@ impl Entry {
             service,
             username,
             passwd,
+            notes: String::new(),
             created_at: now,
             updated_at: now,
         }
+    }
+
+    /// Replaces the notes, wiping the old text first: notes can hold
+    /// recovery codes or PINs.
+    pub fn set_notes(&mut self, notes: String) {
+        self.notes.zeroize();
+        self.notes = notes;
+        self.updated_at = chrono::Utc::now().timestamp();
     }
 
     pub fn update(&mut self, username: Option<String>, passwd: Option<String>) {

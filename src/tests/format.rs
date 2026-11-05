@@ -34,18 +34,42 @@ fn v0_bytes() -> Vec<u8> {
 }
 
 fn sample_entries() -> BTreeMap<String, Entry> {
-    [("bank", "0042", "0099"), ("ção", "jöão", "pässwörd 🔑"), ("empty", "", "")]
-        .into_iter()
-        .map(|(service, user, pass)| {
-            (service.to_string(), Entry::new(service.into(), user.into(), pass.into()))
-        })
-        .collect()
+    [
+        ("bank", "0042", "0099", "agência 0001"),
+        ("ção", "jöão", "pässwörd 🔑", ""),
+        ("empty", "", "", ""),
+    ]
+    .into_iter()
+    .map(|(service, user, pass, notes)| {
+        let mut entry = Entry::new(service.into(), user.into(), pass.into());
+        entry.notes = notes.into();
+        (service.to_string(), entry)
+    })
+    .collect()
+}
+
+/// The plaintext of one entry "ab" (user "c", empty password, notes "n",
+/// created 1, updated 2), with or without the notes field.
+fn one_entry_bytes(with_notes: bool) -> Vec<u8> {
+    let mut bytes = 1u64.to_le_bytes().to_vec(); // one entry
+    let texts: &[&str] = if with_notes {
+        &["ab", "ab", "c", "", "n"] // key, service, username, password, notes
+    } else {
+        &["ab", "ab", "c", ""]
+    };
+    for text in texts {
+        bytes.extend((text.len() as u64).to_le_bytes());
+        bytes.extend(text.as_bytes());
+    }
+    bytes.extend(1i64.to_le_bytes()); // created_at
+    bytes.extend(2i64.to_le_bytes()); // updated_at
+    bytes
 }
 
 #[test]
 fn the_current_layout_is_header_nonce_then_ciphertext() {
     let mut expected = b"VAULT\0".to_vec();
-    expected.extend(1u16.to_le_bytes()); // format version
+    expected.extend(CURRENT_VERSION.to_le_bytes()); // format version
     expected.push(1); // Argon2id
     expected.extend(65536u32.to_le_bytes()); // memory, KiB
     expected.extend(3u32.to_le_bytes()); // passes
@@ -123,31 +147,40 @@ fn unreasonable_kdf_costs_are_refused_before_deriving_anything() {
     assert_eq!(VaultFile::decode(&bytes), Err(FormatError::BadKdf));
 }
 
-#[test]
-fn entries_round_trip() {
-    let entries = sample_entries();
-    assert_eq!(format::decode_entries(&format::encode_entries(&entries)).unwrap(), entries);
-
-    let none = BTreeMap::new();
-    assert_eq!(format::decode_entries(&format::encode_entries(&none)).unwrap(), none);
+fn decode(bytes: &[u8]) -> Result<BTreeMap<String, Entry>, FormatError> {
+    format::decode_entries(bytes, CURRENT_VERSION)
 }
 
 #[test]
-fn the_plaintext_layout_is_the_one_version_0_used() {
+fn entries_round_trip() {
+    let entries = sample_entries();
+    assert_eq!(decode(&format::encode_entries(&entries)).unwrap(), entries);
+
+    let none = BTreeMap::new();
+    assert_eq!(decode(&format::encode_entries(&none)).unwrap(), none);
+}
+
+#[test]
+fn the_current_plaintext_has_notes_after_the_password() {
     let mut entry = Entry::new("ab".into(), "c".into(), "".into());
+    entry.notes = "n".into();
     entry.created_at = 1;
     entry.updated_at = 2;
     let entries = BTreeMap::from([("ab".to_string(), entry)]);
+    assert_eq!(format::encode_entries(&entries), one_entry_bytes(true));
+}
 
-    let mut expected = 1u64.to_le_bytes().to_vec(); // one entry
-    for text in ["ab", "ab", "c", ""] {
-        // key, service, username, password
-        expected.extend((text.len() as u64).to_le_bytes());
-        expected.extend(text.as_bytes());
+#[test]
+fn plaintext_from_before_notes_decodes_with_empty_notes() {
+    // Versions 0 and 1 had no notes field.
+    for version in [0, 1] {
+        let entries = format::decode_entries(&one_entry_bytes(false), version).unwrap();
+        let entry = &entries["ab"];
+        assert_eq!((entry.username.as_str(), entry.notes.as_str()), ("c", ""));
+        assert_eq!((entry.created_at, entry.updated_at), (1, 2));
     }
-    expected.extend(1i64.to_le_bytes()); // created_at
-    expected.extend(2i64.to_le_bytes()); // updated_at
-    assert_eq!(format::encode_entries(&entries), expected);
+    // Read with the wrong version, the same bytes don't line up.
+    assert!(decode(&one_entry_bytes(false)).is_err());
 }
 
 #[test]
@@ -158,7 +191,7 @@ fn entries_have_no_size_limit() {
         "big".to_string(),
         Entry::new("big".into(), "u".into(), big.clone()),
     )]);
-    let decoded = format::decode_entries(&format::encode_entries(&entries)).unwrap();
+    let decoded = decode(&format::encode_entries(&entries)).unwrap();
     assert_eq!(decoded["big"].passwd, big);
 }
 
@@ -166,25 +199,25 @@ fn entries_have_no_size_limit() {
 fn lying_lengths_fail_without_allocating() {
     // Claims u64::MAX entries, or a key of u64::MAX bytes, with nothing behind it.
     let huge_count = u64::MAX.to_le_bytes().to_vec();
-    assert_eq!(format::decode_entries(&huge_count), Err(FormatError::Truncated));
+    assert_eq!(decode(&huge_count), Err(FormatError::Truncated));
 
     let mut huge_key = 1u64.to_le_bytes().to_vec();
     huge_key.extend(u64::MAX.to_le_bytes());
-    assert_eq!(format::decode_entries(&huge_key), Err(FormatError::Truncated));
+    assert_eq!(decode(&huge_key), Err(FormatError::Truncated));
 }
 
 #[test]
 fn damaged_plaintext_is_rejected() {
     let bytes = format::encode_entries(&sample_entries());
     for len in 0..bytes.len() {
-        assert!(format::decode_entries(&bytes[..len]).is_err(), "{len} bytes");
+        assert!(decode(&bytes[..len]).is_err(), "{len} bytes");
     }
 
     let mut trailing = bytes.clone();
     trailing.push(0);
-    assert_eq!(format::decode_entries(&trailing), Err(FormatError::TrailingBytes));
+    assert_eq!(decode(&trailing), Err(FormatError::TrailingBytes));
 
     let mut not_utf8 = bytes.clone();
     not_utf8[16] = 0xFF; // first byte of the first key
-    assert_eq!(format::decode_entries(&not_utf8), Err(FormatError::InvalidText));
+    assert_eq!(decode(&not_utf8), Err(FormatError::InvalidText));
 }

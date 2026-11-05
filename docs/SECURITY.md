@@ -65,7 +65,7 @@ create/unlock
 
 ## On-Disk Format
 
-The format is defined byte by byte in `src/domain/format.rs`, with no serialization library in between. Format v1, written by this version:
+The format is defined byte by byte in `src/domain/format.rs`, with no serialization library in between. Formats v1 and v2 share this layout; v2 is written by this version:
 
 | Bytes | Field |
 |-------|-------|
@@ -81,8 +81,8 @@ The salt, nonce and parameters are stored in plaintext. This is standard and saf
 
 - **The header is authenticated.** Everything before the nonce is passed to AES-GCM as associated data, so changing any header byte (version, cost, salt) makes decryption fail, exactly like a wrong password.
 - **Costs are bounded before use.** The header can only be verified after the key is derived, so a file asking for more than 1 GiB of memory, 64 passes or 16 lanes is rejected as damaged before any derivation. A hostile file can't make unlock allocate gigabytes.
-- **No size limit, no lying lengths.** The plaintext (entry count, then each entry's strings and timestamps) is decoded by checking every length against the bytes actually present. A vault of any size reopens, and a corrupted length fails without reserving memory for it.
-- **Version 0** (before the format had a version): salt, nonce, a u64 ciphertext length and the ciphertext, with no associated data. These files are read and upgraded to v1 on unlock (see Key Derivation).
+- **No size limit, no lying lengths.** The plaintext (entry count, then each entry's strings and timestamps; notes exist from v2 on) is decoded by checking every length against the bytes actually present. A vault of any size reopens, and a corrupted length fails without reserving memory for it.
+- **Version 0** (before the format had a version): salt, nonce, a u64 ciphertext length and the ciphertext, with no associated data. These files, like v1 files, are read and rewritten in the current format on unlock (see Key Derivation).
 - A file from a **newer** version is refused with its version number, rather than misread.
 
 ### Nonce Reuse Prevention

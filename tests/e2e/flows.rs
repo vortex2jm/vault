@@ -1,6 +1,6 @@
 //! Everyday flows through the CLI.
 
-use crate::support::{MENU, Session, TempDir};
+use crate::support::{CTRL_U, MENU, Session, TempDir};
 
 #[test]
 fn entries_survive_commit_and_a_new_session() {
@@ -147,10 +147,38 @@ fn update_changes_only_the_fields_given() {
     s.command("update github");
     s.answer("New username (blank to keep): ", "bob");
     s.answer("New password (blank to keep): ", "");
+    s.answer("Notes: ", ""); // Enter keeps the pre-filled notes
     s.expect("Entry 'github' updated.");
     s.command("get github");
     let out = s.output();
     assert!(out.contains("user: bob") && out.contains("pass: hunter2"), "{out}");
+    s.exit_discarding();
+}
+
+#[test]
+fn notes_can_be_added_shown_and_edited() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "pw");
+    s.add_with_notes("github", "alice", "hunter2", "2FA on the phone");
+    s.command("get github");
+    assert!(s.output().contains("notes: 2FA on the phone"));
+
+    // update shows the current notes pre-filled; Ctrl-U clears them.
+    s.command("update github");
+    s.answer("New username (blank to keep): ", "");
+    s.answer("New password (blank to keep): ", "");
+    s.expect("Notes: 2FA on the phone");
+    s.send(&[CTRL_U, b"backup codes in the safe\r"].concat());
+    s.expect("Entry 'github' updated.");
+    s.command("get github");
+    let out = s.output();
+    assert!(out.contains("notes: backup codes in the safe") && !out.contains("2FA"), "{out}");
+
+    // An entry without notes has no notes line.
+    s.add("bank", "bob", "s3cr3t");
+    s.command("get bank");
+    assert!(!s.output().contains("notes:"));
     s.exit_discarding();
 }
 

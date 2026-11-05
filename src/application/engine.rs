@@ -200,7 +200,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
                 VaultError::InvalidPassword
             })?;
 
-        let entries_result = format::decode_entries(&plaintext).map_err(|_| {
+        let entries_result = format::decode_entries(&plaintext, file.version).map_err(|_| {
             self.crypto.reset();
             VaultError::Corrupted
         });
@@ -220,13 +220,21 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         Ok(Upgrade::None)
     }
 
-    /// Rewrites the open vault in the current format, with a fresh salt and a
-    /// key derived at the engine's cost. On failure, goes back to the old key
-    /// so the vault stays usable as it was.
+    /// Rewrites the open vault in the current format. If its key is cheaper
+    /// than the engine's cost, it also gets a fresh salt and a key at that
+    /// cost; otherwise the key is kept and nothing is derived again. On
+    /// failure, goes back to the old key so the vault stays usable as it was.
     fn upgrade(&mut self, password: &str) -> Upgrade {
         let Some(old) = self.vault_state else {
             return Upgrade::None;
         };
+        if !old.kdf.is_weaker_than(&self.kdf) {
+            // The key is fine, only the format is old: write it again as it is.
+            return match self.commit() {
+                Ok(()) => Upgrade::Done,
+                Err(e) => Upgrade::Failed(e.to_string()),
+            };
+        }
         let new = VaultState {
             salt: self.crypto.salt_gen(),
             kdf: self.kdf,
@@ -324,6 +332,25 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         Ok(vaults)
     }
 
+    /// Replaces the notes of an entry; the vault becomes dirty only if they
+    /// actually change.
+    pub fn set_notes(&mut self, service: &str, mut notes: String) -> Result<(), VaultError> {
+        if self.is_locked() {
+            return Err(VaultError::Locked);
+        }
+        let entry = self
+            .entries
+            .get_mut(service)
+            .ok_or(VaultError::EntryNotFound)?;
+        if entry.notes == notes {
+            notes.zeroize();
+        } else {
+            entry.set_notes(notes);
+            self.dirty = true;
+        }
+        Ok(())
+    }
+
     /// Updates username and/or password of an existing entry.
     /// Blank strings are treated as "keep current value".
     pub fn update(
@@ -400,11 +427,11 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         let mut wtr = csv::Writer::from_writer(file);
 
         // Header row
-        wtr.write_record(["service", "username", "password"])
+        wtr.write_record(["service", "username", "password", "notes"])
             .map_err(|_| VaultError::Serialization)?;
 
         for e in self.entries.values() {
-            wtr.write_record([&e.service, &e.username, &e.passwd])
+            wtr.write_record([&e.service, &e.username, &e.passwd, &e.notes])
                 .map_err(|_| VaultError::Serialization)?;
         }
 
@@ -433,9 +460,12 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             let service  = record.get(0).ok_or(VaultError::Serialization)?.to_string();
             let username = record.get(1).ok_or(VaultError::Serialization)?.to_string();
             let password = record.get(2).ok_or(VaultError::Serialization)?.to_string();
+            // Optional: exports made before notes existed have three columns.
+            let notes = record.get(3).unwrap_or_default().to_string();
 
             if let std::collections::btree_map::Entry::Vacant(e) = self.entries.entry(service.clone()) {
-                let entry = Entry::new(service, username, password);
+                let mut entry = Entry::new(service, username, password);
+                entry.notes = notes;
                 e.insert(entry);
                 count += 1;
             }

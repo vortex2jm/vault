@@ -40,10 +40,10 @@ src/
 The innermost layer. Contains only:
 
 - **`models.rs`** — Plain data structures:
-  - `Entry` — a single credential (`service`, `username`, `passwd`, `created_at`, `updated_at`). Derives `Zeroize` so it can be wiped from memory on lock.
+  - `Entry` — a single credential (`service`, `username`, `passwd`, `notes`, `created_at`, `updated_at`). Derives `Zeroize` so it can be wiped from memory on lock.
   - `KdfParams` — Argon2id cost (memory, passes, lanes): `DEFAULT` for new keys, `LEGACY` for version-0 files.
   - `VaultState` — what the engine keeps about the open vault's key: its `salt` and `KdfParams`.
-- **`format.rs`** — The file format as pure functions: `VaultFile::decode` (v0 and v1) and `encode` (v1), the header used as AES-GCM associated data, and the plaintext codec for the entries. No serialization library: every length is checked against the bytes present.
+- **`format.rs`** — The file format as pure functions: `VaultFile::decode` (v0, v1 and v2) and `encode` (v2), the header used as AES-GCM associated data, and the plaintext codec for the entries. No serialization library: every length is checked against the bytes present.
 - **`ports.rs`** — Pure trait definitions:
   - `CryptoPort` — `salt_gen`, `init`, `reset`, `encrypt`, `decrypt`
   - `StoragePort` — `exists`, `set_path`, `get_path`, `load`, `save`, `list_vaults`

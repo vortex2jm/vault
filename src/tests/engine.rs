@@ -321,6 +321,7 @@ fn operations_require_an_unlocked_vault() {
     assert!(matches!(engine.add("s", "u", "p"), Err(VaultError::Locked)));
     assert!(matches!(engine.get("s"), Err(VaultError::Locked)));
     assert!(matches!(engine.update("s", None, None), Err(VaultError::Locked)));
+    assert!(matches!(engine.set_notes("s", "n".into()), Err(VaultError::Locked)));
     assert!(matches!(engine.delete("s"), Err(VaultError::Locked)));
     assert!(matches!(engine.commit(), Err(VaultError::Locked)));
     assert!(matches!(engine.lock(), Err(VaultError::Locked)));
@@ -470,6 +471,7 @@ fn export_then_import_round_trip() {
     let mut source = created(&dir, "source", "pw");
     source.add("github", "alice", "hunter2").unwrap();
     source.add("bank", "0042", "0099").unwrap();
+    source.set_notes("bank", "agência 0001, conta 12345-6".into()).unwrap();
     source.export(path_str(&csv)).unwrap();
     source.lock().unwrap();
 
@@ -482,6 +484,41 @@ fn export_then_import_round_trip() {
     assert_eq!(target.get("github").unwrap().passwd, "keep-me");
     let bank = target.get("bank").unwrap();
     assert_eq!((bank.username.as_str(), bank.passwd.as_str()), ("0042", "0099"));
+    assert_eq!(bank.notes, "agência 0001, conta 12345-6");
+}
+
+#[test]
+fn import_accepts_exports_from_before_notes() {
+    let dir = TempDir::new();
+    let csv = dir.file("old-export.csv");
+    fs::write(&csv, "service,username,password\ngithub,alice,hunter2\n").unwrap();
+
+    let mut engine = created(&dir, "personal", "pw");
+    assert_eq!(engine.import(path_str(&csv)).unwrap(), 1);
+    let entry = engine.get("github").unwrap();
+    assert_eq!((entry.passwd.as_str(), entry.notes.as_str()), ("hunter2", ""));
+}
+
+#[test]
+fn notes_are_saved_with_the_entry() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "personal", "pw");
+    engine.add("github", "alice", "hunter2").unwrap();
+    engine.commit().unwrap();
+
+    engine.set_notes("github", "recovery codes in the safe".into()).unwrap();
+    assert!(engine.is_dirty());
+    engine.commit().unwrap();
+    engine.set_notes("github", "recovery codes in the safe".into()).unwrap();
+    assert!(!engine.is_dirty(), "the same notes again change nothing");
+
+    engine.lock().unwrap();
+    engine.unlock("personal", "pw").unwrap();
+    assert_eq!(engine.get("github").unwrap().notes, "recovery codes in the safe");
+    assert!(matches!(
+        engine.set_notes("missing", "x".into()),
+        Err(VaultError::EntryNotFound)
+    ));
 }
 
 #[test]
