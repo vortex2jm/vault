@@ -14,10 +14,13 @@ use crate::{
 use commands::Command;
 use ui::{BLUE, CYAN, GREEN, RED, RESET, VaultHelper, YELLOW};
 
-/// Vault CLI struct, containing the engine and readline editor
+/// Vault CLI struct, containing the engine and readline editors
 pub struct VaultCli<S: StoragePort, C: CryptoPort> {
     engine: VaultEngine<S, C>,
     rl: Editor<VaultHelper, DefaultHistory>,
+    /// Editor for answers (`update`'s username, confirmations, menus): line
+    /// editing works, but there is no Tab completion and no history.
+    answers: Editor<(), DefaultHistory>,
 }
 
 impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
@@ -26,8 +29,9 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
 
         let mut rl = Editor::<VaultHelper, DefaultHistory>::new()?;
         rl.set_helper(Some(helper));
+        let answers = Editor::<(), DefaultHistory>::new()?;
 
-        Ok(Self { engine, rl })
+        Ok(Self { engine, rl, answers })
     }
 
     /// Main loop
@@ -114,12 +118,12 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             }
 
             Command::Update(s) => {
-                println!("Updating entry '{}'.", &s);
+                println!("Updating entry '{s}'.");
 
-                print!("New username (blank to keep): ");
-                io::stdout().flush().ok();
-                let mut raw = String::new();
-                io::stdin().read_line(&mut raw)?;
+                let Some(raw) = self.ask("New username (blank to keep): ") else {
+                    println!("Aborted.\n");
+                    return Ok(());
+                };
                 let new_username = raw.trim().to_string();
 
                 let mut new_pw = self.request_password("New password (blank to keep): ")?;
@@ -299,19 +303,14 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             println!("1) Commit and exit");
             println!("2) Exit without committing");
             println!("3) Cancel\n");
-            print!("Choose an option [1-3]: ");
-            io::stdout().flush()?;
 
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-
-            match input.trim() {
-                "1" => {
+            match self.ask("Choose an option [1-3]: ").as_deref().map(str::trim) {
+                Some("1") => {
                     self.engine.commit()?;
                     Ok(true)
                 }
-                "2" => Ok(true),
-                _   => Ok(false),
+                Some("2") => Ok(true),
+                _ => Ok(false),
             }
         } else {
             Ok(true)
@@ -324,19 +323,14 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             println!("1) Commit and lock");
             println!("2) Lock without committing");
             println!("3) Cancel\n");
-            print!("Choose an option [1-3]: ");
-            io::stdout().flush()?;
 
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-
-            match input.trim() {
-                "1" => {
+            match self.ask("Choose an option [1-3]: ").as_deref().map(str::trim) {
+                Some("1") => {
                     self.engine.commit()?;
                     Ok(true)
                 }
-                "2" => Ok(true),
-                _   => Ok(false),
+                Some("2") => Ok(true),
+                _ => Ok(false),
             }
         } else {
             Ok(true)
@@ -375,12 +369,18 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
         Ok(rpassword::read_password()?)
     }
 
-    fn confirm(&self, msg: &str) -> bool {
-        print!("{} (y/N): ", msg);
-        io::stdout().flush().ok();
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).ok();
-        matches!(input.trim(), "y" | "Y")
+    /// Asks a yes/no question. Anything but `y` (Ctrl-C and Ctrl-D included) means no.
+    fn confirm(&mut self, msg: &str) -> bool {
+        matches!(
+            self.ask(&format!("{msg} (y/N): ")).as_deref().map(str::trim),
+            Some("y" | "Y")
+        )
+    }
+
+    /// Asks a question answered on one line, with line editing (arrows,
+    /// Ctrl-U…). `None` if the user pressed Ctrl-C or Ctrl-D.
+    fn ask(&mut self, question: &str) -> Option<String> {
+        self.answers.readline(question).ok()
     }
 
     fn print_help() {

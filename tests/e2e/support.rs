@@ -23,9 +23,11 @@ use std::{
 /// How long to wait for expected output before failing.
 const TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Marks the start of a new REPL prompt in the cleaned output. Rustyline
-/// switches bracketed paste on (`ESC[?2004h`) each time it starts reading a
-/// line, but not when it redraws the line being edited.
+/// Marks the start of a new prompt in the cleaned output. Rustyline switches
+/// bracketed paste on (`ESC[?2004h`) each time it starts reading a line, but
+/// not when it redraws the line being edited. Answers (`update`'s username,
+/// confirmations, menus) are read through rustyline too, so `output` stops
+/// at them as well: reply to those with `answer`.
 const PROMPT_START: &str = "\u{1}";
 
 pub const MENU: &str = "Choose an option [1-3]: ";

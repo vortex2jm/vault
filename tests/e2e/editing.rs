@@ -1,6 +1,6 @@
 //! Line editing at the REPL prompt: Tab, history and cursor keys.
 
-use crate::support::{CTRL_C, CTRL_D, LEFT, Session, TAB, TempDir, UP};
+use crate::support::{CTRL_C, CTRL_D, CTRL_U, LEFT, Session, TAB, TempDir, UP};
 
 #[test]
 fn tab_completes_command_names() {
@@ -84,6 +84,70 @@ fn left_arrow_moves_the_cursor() {
     s.keys(&[b"s".as_slice(), LEFT, b"l\r"].concat());
     assert!(s.output().contains("(no vaults found)"));
     s.exit();
+}
+
+#[test]
+fn arrow_keys_edit_the_update_prompt() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "pw");
+    s.add("site", "alice", "pw");
+    s.command("update site");
+    s.expect("New username (blank to keep): ");
+    // Ctrl-U clears the line; then "bob", left, "X" → "boXb". Arrow keys used
+    // to end up in the username as escape sequences (B4).
+    s.send(&[CTRL_U, b"bob", LEFT, b"X\r"].concat());
+    s.answer("New password (blank to keep): ", "");
+    s.expect("Entry 'site' updated.");
+    s.command("get site");
+    let out = s.output();
+    assert!(out.contains("user: boXb"), "{out}");
+    s.exit_discarding();
+}
+
+#[test]
+fn arrow_keys_work_in_confirmations() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "pw");
+    s.add("github", "alice", "hunter2");
+    s.command("rm github");
+    s.expect("Remove 'github'? (y/N): ");
+    s.send(&[b"y".as_slice(), LEFT, b"\r"].concat());
+    s.expect("Entry 'github' removed.");
+    s.exit_discarding();
+}
+
+#[test]
+fn ctrl_c_cancels_an_update() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "pw");
+    s.add("github", "alice", "hunter2");
+    s.command("update github");
+    s.expect("New username (blank to keep): ");
+    s.send(CTRL_C);
+    s.expect("Aborted.");
+    s.command("get github");
+    assert!(s.output().contains("user: alice"));
+    s.exit_discarding();
+}
+
+#[test]
+fn tab_does_not_offer_commands_in_answers() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "pw");
+    s.add("github", "alice", "hunter2");
+    s.command("update github");
+    s.expect("New username (blank to keep): ");
+    s.send(&[b"c".as_slice(), TAB, b"\r"].concat());
+    s.answer("New password (blank to keep): ", "");
+    s.expect("Entry 'github' updated.");
+    s.command("get github");
+    let out = s.output();
+    assert!(out.contains("user: c\n"), "{out}");
+    s.exit_discarding();
 }
 
 #[test]
