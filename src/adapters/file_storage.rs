@@ -23,9 +23,9 @@ pub struct FileStorage {
 }
 
 impl FileStorage {
-    pub fn new() -> Self {
-        let home = dirs_2::home_dir().expect("Error: Could not found home dir!");
-        Self::with_base_path(home.join(".vault"))
+    /// Stores vaults in `~/.vault`.
+    pub fn new() -> Result<Self, StorageError> {
+        Ok(Self::with_base_path(vault_dir(std::env::home_dir())?))
     }
 
     /// Stores vaults under `base_path` instead of `~/.vault`.
@@ -39,6 +39,14 @@ impl FileStorage {
             seen: None,
         }
     }
+}
+
+/// `<home>/.vault`. An empty home would put the vaults in whatever directory
+/// the program runs from, so it counts as none.
+pub(crate) fn vault_dir(home: Option<PathBuf>) -> Result<PathBuf, StorageError> {
+    home.filter(|home| !home.as_os_str().is_empty())
+        .map(|home| home.join(".vault"))
+        .ok_or(StorageError::NoHomeDir)
 }
 
 impl StoragePort for FileStorage {

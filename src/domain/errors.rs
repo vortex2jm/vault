@@ -79,6 +79,9 @@ pub enum StorageError {
 
     #[error("The file changed since it was last read")]
     Conflict,
+
+    #[error("No home directory to keep the vaults in: set HOME")]
+    NoHomeDir,
 }
 
 #[derive(Debug, Error)]

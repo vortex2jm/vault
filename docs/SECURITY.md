@@ -145,6 +145,7 @@ A crash or power loss at any point leaves each file either in its old state or i
 | Crate | Purpose |
 |-------|---------|
 | `aes-gcm` | AES-256-GCM AEAD encryption |
+| `aes` | Not used directly: listed to turn on its `zeroize` feature (AES round keys wiped on drop) |
 | `argon2` | Argon2id key derivation |
 | `zeroize` | Memory zeroization of secrets |
 | `rpassword` | Password input without terminal echo |
@@ -154,4 +155,5 @@ A crash or power loss at any point leaves each file either in its old state or i
 | `anyhow` | Error propagation in the CLI layer |
 | `thiserror` | Typed error definitions |
 | `chrono` | Timestamps on entries |
-| `dirs-2` | Home directory resolution |
+| `csv` | `export` and `import` |
+| `arboard` | Clipboard for `copy`, text only (default features off: they add image support) |

@@ -1,11 +1,11 @@
 //! `FileStorage`: vault files, backups, atomic saves, sessions, listing,
 //! rename and delete.
 
-use std::fs;
+use std::{fs, path::PathBuf};
 
 use super::support::TempDir;
 use crate::{
-    adapters::file_storage::FileStorage,
+    adapters::file_storage::{FileStorage, vault_dir},
     domain::{errors::StorageError, ports::StoragePort},
 };
 
@@ -236,4 +236,14 @@ fn delete_removes_the_vault_and_its_backup() {
     assert!(!dir.file("personal.vault").exists());
     assert!(!dir.file("personal.bkp").exists());
     assert!(storage.delete("personal".into()).is_err());
+}
+
+#[test]
+fn vaults_live_in_dot_vault_in_the_home_directory() {
+    assert_eq!(vault_dir(Some("/home/ana".into())).unwrap(), PathBuf::from("/home/ana/.vault"));
+    // An empty home would put the vaults in whatever directory the program
+    // runs from.
+    for home in [None, Some(PathBuf::new())] {
+        assert!(matches!(vault_dir(home.clone()), Err(StorageError::NoHomeDir)), "{home:?}");
+    }
 }

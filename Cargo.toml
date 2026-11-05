@@ -9,11 +9,11 @@ rust-version = "1.89"
 aes-gcm = { version = "0.10.3", features = ["zeroize"] }
 anyhow = "1.0.100"
 argon2 = { version = "0.5.3", features = ["zeroize"] }
-arboard = "3"
+# Text only: the default features add image support (image, png, tiff…).
+arboard = { version = "3", default-features = false }
 chrono = "0.4.41"
 csv = "1"
 dialoguer = { version = "0.12", default-features = false, features = ["fuzzy-select"] }
-dirs-2 = "3.0.1"
 rpassword = "7.4.0"
 rustyline = "17.0.2"
 sha2 = "0.10.9"
