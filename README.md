@@ -9,7 +9,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **AES-256-GCM** authenticated encryption
 - **Argon2id** key derivation (memory-hard, resistant to brute force)
 - **Multiple named vaults** — one per context (work, personal, etc.)
-- **Tab-completion** and **command history** in the interactive shell
+- **Tab-completion** of commands, entry names, vault names and file paths, and **command history** in the interactive shell
 - **Automatic backup + SHA-256 integrity check** before every write
 - **Strict Security**: Memory zeroization (secrets never linger), `0o600` restrictive file permissions (Unix), and path traversal protection.
 - **Zero network access** — entirely offline

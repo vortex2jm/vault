@@ -35,6 +35,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
         println!("--- Vault CLI ---\n");
 
         loop {
+            self.refresh_completion();
             let line = match self.rl.readline(&self.prompt()) {
                 Ok(l) => {
                     self.rl.add_history_entry(l.as_str())?;
@@ -355,6 +356,15 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             } else {
                 format!("{BLUE}vault{RESET}[{GREEN}{name}{RESET}|{CYAN}{count}{RESET}]> ")
             }
+        }
+    }
+
+    /// Hands Tab completion the current entry and vault names.
+    fn refresh_completion(&mut self) {
+        let entries = self.engine.get_entries().unwrap_or_default();
+        let vaults = self.engine.get_vaults().unwrap_or_default();
+        if let Some(helper) = self.rl.helper_mut() {
+            helper.set_names(entries, vaults);
         }
     }
 

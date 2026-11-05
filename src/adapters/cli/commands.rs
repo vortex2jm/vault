@@ -22,7 +22,32 @@ pub enum Command {
     Add { service: String, username: String },
 }
 
+/// What a command's first argument refers to, so Tab knows what to offer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Argument {
+    /// An entry of the unlocked vault.
+    Entry,
+    /// An existing vault.
+    Vault,
+    /// A file path.
+    Path,
+    /// Free text, such as a new name or a length: nothing to offer.
+    Free,
+}
+
 impl Command {
+    /// What the first argument of command `name` refers to, or `None` if the
+    /// command takes no argument.
+    pub fn first_argument(name: &str) -> Option<Argument> {
+        match name {
+            "get" | "copy" | "update" | "rm" => Some(Argument::Entry),
+            "unlock" | "drop" => Some(Argument::Vault),
+            "import" | "export" => Some(Argument::Path),
+            "create" | "add" | "rename" | "gen" => Some(Argument::Free),
+            _ => None,
+        }
+    }
+
     /// Every command name, as offered by Tab completion.
     pub const NAMES: &'static [&'static str] = &[
         "create", "unlock", "lock", "add", "get", "rm", "commit", "ls", "list",

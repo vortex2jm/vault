@@ -120,9 +120,9 @@ Implements `StoragePort` using the local filesystem under `~/.vault/`.
 The outermost layer. Implements the interactive REPL.
 
 - **`VaultCli<S, C>`** wraps the engine and a `rustyline::Editor` for line editing.
-- **`run()`** — main loop: reads input → parses command → dispatches to `handle_command`.
+- **`run()`** — main loop: refreshes the completion names → reads input → parses command (`Command::parse`) → dispatches to `handle_command`.
 - **`confirm_exit()` / `confirm_lock()`** — when `dirty = true`, prompts the user to commit/discard before proceeding.
-- **`VaultHelper`** — implements `rustyline::Completer` for tab-completion. Only the current token (from last space to cursor) is matched and replaced.
+- **`VaultHelper`** — implements `rustyline::Completer`. Only the word under the cursor is replaced, and what is offered depends on its position: command names in the first word; in the first argument, entry names (`get`, `copy`, `update`, `rm`), vault names (`unlock`, `drop`) or file paths (`import`, `export`), as declared by `Command::first_argument`. The CLI hands it the current entry and vault names before each prompt.
 - Passwords are read with `rpassword` (no echo).
 
 ---
