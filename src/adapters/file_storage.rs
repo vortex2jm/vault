@@ -1,6 +1,6 @@
 use sha2::{Digest, Sha256};
 use std::{
-    fs::{self, File, OpenOptions, create_dir_all},
+    fs::{self, File, OpenOptions},
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
 };
@@ -58,7 +58,7 @@ impl StoragePort for FileStorage {
     }
 
     fn save(&mut self, data: &[u8]) -> Result<(), StorageError> {
-        create_dir_all(&self.base_path)?;
+        create_private_dir(&self.base_path)?;
         // Released when `_lock` is dropped, at the end of the save.
         let _lock = open_private(&self.base_path.join(COMMIT_LOCK), false)?;
         _lock.lock()?;
@@ -155,6 +155,23 @@ impl StoragePort for FileStorage {
 
         Ok(())
     }
+}
+
+/// Creates `dir` if needed and makes sure only its owner can list or enter
+/// it (vault names would show otherwise). A directory left open by an older
+/// version is tightened here, on the next save.
+fn create_private_dir(dir: &Path) -> Result<(), StorageError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+        if fs::metadata(dir)?.permissions().mode() & 0o077 != 0 {
+            fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+        }
+    }
+    #[cfg(not(unix))]
+    fs::create_dir_all(dir)?;
+    Ok(())
 }
 
 fn fingerprint(data: &[u8]) -> [u8; 32] {

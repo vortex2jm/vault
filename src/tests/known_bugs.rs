@@ -67,41 +67,6 @@ fn b6_import_must_leave_a_consistent_state() {
     }
 }
 
-#[cfg(unix)]
-mod permissions {
-    use std::fs;
-
-    use super::super::support::{TempDir, created, engine_at, mode, path_str};
-
-    #[test]
-    #[ignore = "B7: CSV export follows the umask"]
-    fn b7_export_must_be_private() {
-        let dir = TempDir::new();
-        let csv = dir.file("export.csv");
-        created(&dir, "personal", "pw").export(path_str(&csv)).unwrap();
-        assert_eq!(mode(&csv), 0o600);
-    }
-
-    #[test]
-    #[ignore = "B7: CSV export overwrites existing files"]
-    fn b7_export_must_not_overwrite_an_existing_file() {
-        let dir = TempDir::new();
-        let csv = dir.file("precious.csv");
-        fs::write(&csv, "precious").unwrap();
-        assert!(created(&dir, "personal", "pw").export(path_str(&csv)).is_err());
-        assert_eq!(fs::read_to_string(&csv).unwrap(), "precious");
-    }
-
-    #[test]
-    #[ignore = "B7: the vault directory is created with the umask"]
-    fn b7_vault_directory_must_be_private() {
-        let dir = TempDir::new();
-        let base = dir.file("vaults");
-        engine_at(&base).create_vault("personal", "pw").unwrap();
-        assert_eq!(mode(&base), 0o700);
-    }
-}
-
 #[test]
 #[ignore = "B8: after passwd, the .bkp still opens with the old password"]
 fn b8_backup_must_not_open_with_the_old_password() {

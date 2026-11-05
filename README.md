@@ -13,7 +13,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **Interactive selector** (`find`): browse your entries with the arrow keys and fuzzy search
 - **Crash-safe saves**: every commit writes a new file and atomically swaps it in, keeping the previous version as a backup
 - **Safe across sessions**: open the same vault in two terminals; a commit never overwrites what the other one saved
-- **Strict Security**: Memory zeroization (secrets never linger), `0o600` restrictive file permissions (Unix), and path traversal protection.
+- **Strict Security**: Memory zeroization (secrets never linger), owner-only permissions on Unix (`0700` directory; `0600` vaults, backups and exports), and path traversal protection.
 - **Zero network access** — entirely offline
 
 ---
@@ -96,7 +96,7 @@ vault[locked]>
 | `rename` | `<new_name>`| Rename the current vault file |
 | `ls`/`list`| — | List vaults (when locked) or entries (when unlocked) |
 | `info` | — | Show vault path and entry count |
-| `export` | `<path>` | Export entries to a CSV file (**Warning: Plaintext!**) |
+| `export` | `<path>` | Export entries to a CSV file (**Warning: Plaintext!**). Created `0600`; never overwrites an existing file |
 | `import` | `<path>` | Import entries from a CSV file (merges new services) |
 | **CLI** |
 | `clear` | — | Clear the screen and the scrollback (hides passwords shown by `get`) |
@@ -117,7 +117,7 @@ vault[myname*|3]>                 # unlocked, unsaved changes
 
 ## Storage Layout
 
-All vault files are stored in `~/.vault/` (with strict `0o600` permissions on Unix systems):
+All vault files are stored in `~/.vault/`. On Unix the directory is `0700` and every file `0600`; if an older version left them more open, they are tightened on the next commit:
 
 ```text
 ~/.vault/

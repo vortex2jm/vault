@@ -106,6 +106,7 @@ A crash or power loss at any point leaves each file either in its old state or i
 | Secrets lingering in RAM after lock | `ZeroizeOnDrop` on key, `Zeroize` on entries, explicit zeroize on passwords |
 | Vault file corruption on crash | Atomic replace: temporary file + `fsync` + `rename` + directory `fsync` |
 | Lost updates between sessions | A commit is refused if another session saved since this one loaded the vault |
+| Other local users reading vaults or exports | `~/.vault` is `0700`; vaults, backups and CSV exports are `0600`; an export never overwrites an existing file |
 | Accidental vault overwrite | `create` and `rename` refuse a name that already belongs to a vault |
 
 ### Out of Scope / Limitations

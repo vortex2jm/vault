@@ -1,4 +1,6 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fs::OpenOptions, io::ErrorKind};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 use zeroize::Zeroize;
 
@@ -314,16 +316,22 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
     }
 
     /// Exports all entries to a CSV file at `path` (plaintext — caller must warn user).
-    /// Format: service,username,password
+    /// Format: service,username,password. The file is created readable by its
+    /// owner only, and an existing file is never replaced.
     pub fn export(&self, path: &str) -> Result<(), VaultError> {
         if self.is_locked() {
             return Err(VaultError::Locked);
         }
 
-        let mut wtr = csv::Writer::from_path(path).map_err(|e| match e.into_kind() {
-            csv::ErrorKind::Io(io) => VaultError::Storage(StorageError::Io(io)),
-            _ => VaultError::Serialization,
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let file = options.open(path).map_err(|e| match e.kind() {
+            ErrorKind::AlreadyExists => VaultError::FileExists(path.to_string()),
+            _ => VaultError::Storage(StorageError::Io(e)),
         })?;
+        let mut wtr = csv::Writer::from_writer(file);
 
         // Header row
         wtr.write_record(["service", "username", "password"])

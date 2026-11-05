@@ -152,6 +152,25 @@ fn saving_makes_an_old_vault_private() {
     assert_eq!(mode(&dir.file("personal.bkp")), 0o600);
 }
 
+#[cfg(unix)]
+#[test]
+fn the_vault_directory_is_private() {
+    use super::support::mode;
+    use std::os::unix::fs::PermissionsExt;
+
+    // Created private by the first save…
+    let dir = TempDir::new();
+    let mut storage = FileStorage::with_base_path(dir.file("vaults"));
+    storage.set_path("personal".into());
+    storage.save(b"v1").unwrap();
+    assert_eq!(mode(&dir.file("vaults")), 0o700);
+
+    // …and tightened on the next save if an older version left it open.
+    fs::set_permissions(dir.file("vaults"), fs::Permissions::from_mode(0o775)).unwrap();
+    storage.save(b"v2").unwrap();
+    assert_eq!(mode(&dir.file("vaults")), 0o700);
+}
+
 #[test]
 fn list_vaults_only_returns_vault_files() {
     let dir = TempDir::new();

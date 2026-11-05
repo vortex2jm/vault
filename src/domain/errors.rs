@@ -26,6 +26,9 @@ pub enum VaultError {
     #[error("Password length must be between {min} and {max}")]
     InvalidPasswordLength { min: usize, max: usize },
 
+    #[error("{0} already exists: choose another file")]
+    FileExists(String),
+
     #[error("Serialization failed")]
     Serialization,
 

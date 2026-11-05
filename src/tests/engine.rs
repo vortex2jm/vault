@@ -296,6 +296,28 @@ fn export_then_import_round_trip() {
 }
 
 #[test]
+fn export_never_replaces_an_existing_file() {
+    let dir = TempDir::new();
+    let csv = dir.file("precious.csv");
+    fs::write(&csv, "precious").unwrap();
+
+    let engine = created(&dir, "personal", "pw");
+    assert!(matches!(engine.export(path_str(&csv)), Err(VaultError::FileExists(_))));
+    assert_eq!(fs::read_to_string(&csv).unwrap(), "precious");
+}
+
+#[cfg(unix)]
+#[test]
+fn exports_are_readable_by_their_owner_only() {
+    use super::support::mode;
+
+    let dir = TempDir::new();
+    let csv = dir.file("export.csv");
+    created(&dir, "personal", "pw").export(path_str(&csv)).unwrap();
+    assert_eq!(mode(&csv), 0o600);
+}
+
+#[test]
 fn rename_vault_moves_it_to_the_new_name() {
     let dir = TempDir::new();
     let mut engine = created(&dir, "old", "pw");

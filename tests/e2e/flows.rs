@@ -263,6 +263,19 @@ fn export_and_import_between_vaults() {
 }
 
 #[test]
+fn export_refuses_to_overwrite_an_existing_file() {
+    let home = TempDir::new();
+    std::fs::write(home.file("precious.csv"), "precious").unwrap();
+    let mut s = Session::start(home.path());
+    s.create("personal", "pw");
+    s.command("export ~/precious.csv");
+    s.answer("Continue? (y/N): ", "y");
+    s.expect("already exists: choose another file");
+    assert_eq!(std::fs::read_to_string(home.file("precious.csv")).unwrap(), "precious");
+    s.exit();
+}
+
+#[test]
 fn passwd_changes_the_master_password() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
