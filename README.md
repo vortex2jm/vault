@@ -11,6 +11,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **Multiple named vaults** — one per context (work, personal, etc.)
 - **Tab-completion** of commands, entry names, vault names and file paths, and **command history** in the interactive shell
 - **Interactive selector** (`find`): browse your entries with the arrow keys and fuzzy search
+- **Notes and password history** on each entry: the last 10 passwords are kept, with the date each one was replaced
 - **Crash-safe saves**: every commit writes a new file and atomically swaps it in, keeping the previous version as a backup
 - **Safe across sessions**: open the same vault in two terminals; a commit never overwrites what the other one saved
 - **Strict Security**: Memory zeroization (secrets never linger), owner-only permissions on Unix (`0700` directory; `0600` vaults, backups and exports), and path traversal protection.
@@ -87,9 +88,10 @@ vault[locked]>
 | **Entries** |
 | `add` | `<service> <user>` | Add a credential entry (asks for its password and optional notes) |
 | `get` | `<service>` | Show a credential entry (username, password and notes) |
-| `find` | `[term]` | Pick an entry from an interactive list (↑/↓ to move, type to filter), then copy, show, update or remove it |
+| `find` | `[term]` | Pick an entry from an interactive list (↑/↓ to move, type to filter), then copy, show, update or remove it, or see its history |
+| `history` | `<service>` | Show an entry's previous passwords, newest first, with the date each was replaced (the last 10 are kept) |
 | `copy` | `<service>` | Copy a password directly to the OS clipboard |
-| `update` | `<service>` | Update an entry: blank keeps the username or password; the notes come pre-filled to edit |
+| `update` | `<service>` | Update an entry: blank keeps the username or password; a new password sends the old one to the history; the notes come pre-filled to edit |
 | `rm` | `<service>` | Remove a credential entry |
 | `gen` | `[length]` | Generate a random strong password (8–256 chars, default: 20) |
 | **Data & I/O** |
@@ -128,7 +130,7 @@ All vault files are stored in `~/.vault/`. On Unix the directory is `0700` and e
 └── work.vault
 ```
 
-Each `.vault` file (format v2) is a small header followed by the encrypted entries (service, username, password, notes and timestamps):
+Each `.vault` file (format v3) is a small header followed by the encrypted entries (service, username, password, notes, previous passwords and timestamps):
 
 - `VAULT\0` and the format version;
 - the Argon2id cost used for this vault's key (memory, passes, lanes);
@@ -136,7 +138,7 @@ Each `.vault` file (format v2) is a small header followed by the encrypted entri
 - `nonce`: 12 random bytes, new at every commit;
 - the AES-256-GCM ciphertext of the entries. The header is authenticated with it, so changing any byte makes the vault refuse to open.
 
-Vaults written by older versions (v0, v1) still open. On unlock they are rewritten in the current format, with a stronger key if theirs was cheaper, and the previous file stays as the `.bkp` until the next commit. The byte-level layout is in [docs/SECURITY.md](docs/SECURITY.md#on-disk-format).
+Vaults written by older versions (v0 to v2) still open. On unlock they are rewritten in the current format, with a stronger key if theirs was cheaper, and the previous file stays as the `.bkp` until the next commit. The byte-level layout is in [docs/SECURITY.md](docs/SECURITY.md#on-disk-format).
 
 ---
 
@@ -150,7 +152,7 @@ github,myuser,mysecret123
 aws,admin,super_secure!
 ```
 
-*Note: Importing merges entries. If a service already exists in the vault, the imported row is skipped. Files without the `notes` column (exports from older versions) import with empty notes.*
+*Note: Importing merges entries. If a service already exists in the vault, the imported row is skipped. Files without the `notes` column (exports from older versions) import with empty notes. The password history is not exported.*
 
 ---
 

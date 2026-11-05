@@ -1,5 +1,15 @@
 use zeroize::Zeroize;
 
+/// How many previous passwords an entry keeps.
+pub const HISTORY_LEN: usize = 10;
+
+/// A password an entry used before, and when it was replaced (Unix time).
+#[derive(Debug, Clone, PartialEq, Eq, Zeroize)]
+pub struct OldPassword {
+    pub passwd: String,
+    pub replaced_at: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Zeroize)]
 pub struct Entry {
     pub service: String,
@@ -7,6 +17,8 @@ pub struct Entry {
     pub passwd: String,
     /// Free text about the entry; empty when there is none.
     pub notes: String,
+    /// Previous passwords, newest first, at most [`HISTORY_LEN`].
+    pub history: Vec<OldPassword>,
     pub(crate) created_at: i64,
     pub(crate) updated_at: i64,
 }
@@ -19,6 +31,7 @@ impl Entry {
             username,
             passwd,
             notes: String::new(),
+            history: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -32,13 +45,32 @@ impl Entry {
         self.updated_at = chrono::Utc::now().timestamp();
     }
 
+    /// Replaces the username and/or the password. A password that actually
+    /// changes goes to the front of the history; the oldest one beyond
+    /// [`HISTORY_LEN`] is wiped and dropped.
     pub fn update(&mut self, username: Option<String>, passwd: Option<String>) {
         let now = chrono::Utc::now().timestamp();
         if let Some(u) = username {
             self.username = u;
         }
-        if let Some(p) = passwd {
-            self.passwd = p;
+        if let Some(mut p) = passwd {
+            if p == self.passwd {
+                p.zeroize();
+            } else {
+                let old = std::mem::replace(&mut self.passwd, p);
+                self.history.insert(
+                    0,
+                    OldPassword {
+                        passwd: old,
+                        replaced_at: now,
+                    },
+                );
+                if self.history.len() > HISTORY_LEN {
+                    for mut dropped in self.history.drain(HISTORY_LEN..) {
+                        dropped.zeroize();
+                    }
+                }
+            }
         }
         self.updated_at = now;
     }

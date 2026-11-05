@@ -1,6 +1,6 @@
 //! Domain models: `Entry` and `KdfParams`.
 
-use crate::domain::models::{Entry, KdfParams};
+use crate::domain::models::{Entry, HISTORY_LEN, KdfParams};
 
 fn github() -> Entry {
     Entry::new("github".into(), "alice".into(), "hunter2".into())
@@ -27,6 +27,44 @@ fn update_replaces_only_the_given_fields() {
     entry.update(None, Some("new-pass".into()));
     assert_eq!((entry.username.as_str(), entry.passwd.as_str()), ("bob", "new-pass"));
     assert_eq!(entry.service, "github");
+}
+
+fn history_of(entry: &Entry) -> Vec<&str> {
+    entry.history.iter().map(|old| old.passwd.as_str()).collect()
+}
+
+#[test]
+fn a_changed_password_goes_to_the_front_of_the_history() {
+    let mut entry = github();
+    assert!(entry.history.is_empty());
+
+    entry.update(None, Some("second".into()));
+    entry.update(None, Some("third".into()));
+    assert_eq!(entry.passwd, "third");
+    assert_eq!(history_of(&entry), ["second", "hunter2"]);
+    // Each one is stamped with the moment it was replaced.
+    assert_eq!(entry.history[0].replaced_at, entry.updated_at);
+    assert!(entry.history[1].replaced_at >= entry.created_at);
+    assert!(entry.history[0].replaced_at >= entry.history[1].replaced_at);
+}
+
+#[test]
+fn the_same_password_or_a_new_username_leaves_the_history_alone() {
+    let mut entry = github();
+    entry.update(None, Some("hunter2".into()));
+    entry.update(Some("bob".into()), None);
+    assert!(entry.history.is_empty());
+}
+
+#[test]
+fn the_history_keeps_only_the_latest_passwords() {
+    let mut entry = github();
+    for i in 0..HISTORY_LEN + 3 {
+        entry.update(None, Some(format!("p{i}")));
+    }
+    assert_eq!(entry.history.len(), HISTORY_LEN);
+    assert_eq!(entry.history[0].passwd, format!("p{}", HISTORY_LEN + 1));
+    assert!(!history_of(&entry).contains(&"hunter2"), "the oldest ones are dropped");
 }
 
 #[test]

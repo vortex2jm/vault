@@ -193,6 +193,19 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                 println!();
             }
 
+            Command::History(s) => {
+                let e = self.engine.get(&s)?;
+                if e.history.is_empty() {
+                    println!("  (no previous passwords for '{s}')\n");
+                } else {
+                    println!("{s}: previous passwords, newest first");
+                    for old in &e.history {
+                        println!("  {}  {}", local_time(old.replaced_at), old.passwd);
+                    }
+                    println!();
+                }
+            }
+
             Command::Copy(s) => {
                 let password = self.engine.get(&s)?.passwd.clone();
                 copy_to_clipboard(password)?;
@@ -437,7 +450,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
 
         let action = Select::with_theme(&theme)
             .with_prompt(&service)
-            .items(["Copy password", "Copy username", "Show", "Update", "Remove"])
+            .items(["Copy password", "Copy username", "Show", "History", "Update", "Remove"])
             .default(0)
             .interact_opt();
         match chosen(action)? {
@@ -449,7 +462,8 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                 Ok(())
             }
             Some(2) => self.handle_command(Command::Get(service)),
-            Some(3) => self.handle_command(Command::Update(service)),
+            Some(3) => self.handle_command(Command::History(service)),
+            Some(4) => self.handle_command(Command::Update(service)),
             Some(_) => self.handle_command(Command::Remove(service)),
             None => {
                 println!("Aborted.\n");
@@ -488,6 +502,7 @@ drop <name>          Permanently delete a vault (must be locked first)
 add <svc> <user>     Add entry (asks for its password and optional notes)
 get <svc>            Show entry (user, pass, notes)
 find [term]          Pick an entry from a list (arrows, type to filter)
+history <svc>        Show the previous passwords of an entry
 copy <svc>           Copy password to clipboard
 update <svc>         Update username, password or notes of entry
 rm <svc>             Remove entry
@@ -517,6 +532,13 @@ fn chosen(result: dialoguer::Result<Option<usize>>) -> Result<Option<usize>> {
         }
         other => Ok(other?),
     }
+}
+
+/// A Unix timestamp as local date and time, e.g. `2026-11-05 14:32`.
+fn local_time(timestamp: i64) -> String {
+    chrono::DateTime::from_timestamp(timestamp, 0)
+        .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "?".to_string())
 }
 
 /// Puts `text` on the clipboard.

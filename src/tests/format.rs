@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use crate::domain::{
     format::{self, CURRENT_VERSION, FormatError, VaultFile},
-    models::{Entry, KdfParams},
+    models::{Entry, KdfParams, OldPassword},
 };
 
 const KDF: KdfParams = KdfParams {
@@ -43,23 +43,33 @@ fn sample_entries() -> BTreeMap<String, Entry> {
     .map(|(service, user, pass, notes)| {
         let mut entry = Entry::new(service.into(), user.into(), pass.into());
         entry.notes = notes.into();
+        if service == "bank" {
+            entry.history = vec![OldPassword { passwd: "0098".into(), replaced_at: 5 }];
+        }
         (service.to_string(), entry)
     })
     .collect()
 }
 
-/// The plaintext of one entry "ab" (user "c", empty password, notes "n",
-/// created 1, updated 2), with or without the notes field.
-fn one_entry_bytes(with_notes: bool) -> Vec<u8> {
-    let mut bytes = 1u64.to_le_bytes().to_vec(); // one entry
-    let texts: &[&str] = if with_notes {
-        &["ab", "ab", "c", "", "n"] // key, service, username, password, notes
-    } else {
-        &["ab", "ab", "c", ""]
-    };
-    for text in texts {
+/// The plaintext of one entry "ab" as format `version` lays it out: user
+/// "c", empty password, notes "n" (from v2), one previous password "old"
+/// replaced at 5 (from v3), created 1 and updated 2.
+fn one_entry_bytes(version: u16) -> Vec<u8> {
+    fn text(bytes: &mut Vec<u8>, text: &str) {
         bytes.extend((text.len() as u64).to_le_bytes());
         bytes.extend(text.as_bytes());
+    }
+    let mut bytes = 1u64.to_le_bytes().to_vec(); // one entry
+    for t in ["ab", "ab", "c", ""] {
+        text(&mut bytes, t); // key, service, username, password
+    }
+    if version >= 2 {
+        text(&mut bytes, "n"); // notes
+    }
+    if version >= 3 {
+        bytes.extend(1u64.to_le_bytes()); // one previous password
+        text(&mut bytes, "old");
+        bytes.extend(5i64.to_le_bytes()); // replaced at
     }
     bytes.extend(1i64.to_le_bytes()); // created_at
     bytes.extend(2i64.to_le_bytes()); // updated_at
@@ -161,26 +171,31 @@ fn entries_round_trip() {
 }
 
 #[test]
-fn the_current_plaintext_has_notes_after_the_password() {
+fn the_current_plaintext_layout() {
     let mut entry = Entry::new("ab".into(), "c".into(), "".into());
     entry.notes = "n".into();
+    entry.history = vec![OldPassword { passwd: "old".into(), replaced_at: 5 }];
     entry.created_at = 1;
     entry.updated_at = 2;
     let entries = BTreeMap::from([("ab".to_string(), entry)]);
-    assert_eq!(format::encode_entries(&entries), one_entry_bytes(true));
+    assert_eq!(format::encode_entries(&entries), one_entry_bytes(CURRENT_VERSION));
 }
 
 #[test]
-fn plaintext_from_before_notes_decodes_with_empty_notes() {
-    // Versions 0 and 1 had no notes field.
-    for version in [0, 1] {
-        let entries = format::decode_entries(&one_entry_bytes(false), version).unwrap();
+fn older_plaintext_decodes_with_the_fields_it_lacked_left_empty() {
+    // No notes before version 2, no history before version 3.
+    for version in [0, 1, 2] {
+        let entries = format::decode_entries(&one_entry_bytes(version), version).unwrap();
         let entry = &entries["ab"];
-        assert_eq!((entry.username.as_str(), entry.notes.as_str()), ("c", ""));
+        let notes = if version >= 2 { "n" } else { "" };
+        assert_eq!((entry.username.as_str(), entry.notes.as_str()), ("c", notes), "v{version}");
+        assert!(entry.history.is_empty(), "v{version}");
         assert_eq!((entry.created_at, entry.updated_at), (1, 2));
     }
-    // Read with the wrong version, the same bytes don't line up.
-    assert!(decode(&one_entry_bytes(false)).is_err());
+    // Read as the current version, the older bytes don't line up.
+    for version in [1, 2] {
+        assert!(decode(&one_entry_bytes(version)).is_err(), "v{version}");
+    }
 }
 
 #[test]
@@ -204,6 +219,14 @@ fn lying_lengths_fail_without_allocating() {
     let mut huge_key = 1u64.to_le_bytes().to_vec();
     huge_key.extend(u64::MAX.to_le_bytes());
     assert_eq!(decode(&huge_key), Err(FormatError::Truncated));
+
+    // An entry claiming u64::MAX previous passwords.
+    let mut huge_history = 1u64.to_le_bytes().to_vec();
+    for _ in 0..5 {
+        huge_history.extend(0u64.to_le_bytes()); // key, service, username, password, notes: empty
+    }
+    huge_history.extend(u64::MAX.to_le_bytes());
+    assert_eq!(decode(&huge_history), Err(FormatError::Truncated));
 }
 
 #[test]

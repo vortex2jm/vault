@@ -500,6 +500,23 @@ fn import_accepts_exports_from_before_notes() {
 }
 
 #[test]
+fn previous_passwords_are_saved_with_the_entry() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "personal", "pw");
+    engine.add("github", "alice", "first").unwrap();
+    engine.update("github", None, Some("second".into())).unwrap();
+    engine.update("github", None, Some("third".into())).unwrap();
+    engine.commit().unwrap();
+    engine.lock().unwrap();
+
+    engine.unlock("personal", "pw").unwrap();
+    let entry = engine.get("github").unwrap();
+    assert_eq!(entry.passwd, "third");
+    let history: Vec<&str> = entry.history.iter().map(|old| old.passwd.as_str()).collect();
+    assert_eq!(history, ["second", "first"]);
+}
+
+#[test]
 fn notes_are_saved_with_the_entry() {
     let dir = TempDir::new();
     let mut engine = created(&dir, "personal", "pw");

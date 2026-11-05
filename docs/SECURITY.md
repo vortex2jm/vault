@@ -59,13 +59,14 @@ create/unlock
 - `AesGcmCrypto` derives `ZeroizeOnDrop` — the key is overwritten when the struct is dropped.
 - `reset()` overwrites the key in place without dropping the struct. It runs on `lock` and when `unlock` fails, so no key (right or wrong) stays in memory. The key lives in a plain array rather than an `Option`, because `Option::take()` would copy it out and leave the original bytes behind.
 - Entries derive `Zeroize` — on `lock()`, every entry is explicitly zeroized before the map is cleared.
+- **Password history.** `update` moves the replaced password into the entry's history (inside the encrypted vault) instead of dropping it; past the last 10, the oldest is zeroized and dropped. Old passwords stay in the vault until then, or until the entry is removed.
 - Passwords read from stdin via `rpassword` are held in `String` and zeroized (via `str.zeroize()`) immediately after use in the CLI layer.
 
 ---
 
 ## On-Disk Format
 
-The format is defined byte by byte in `src/domain/format.rs`, with no serialization library in between. Formats v1 and v2 share this layout; v2 is written by this version:
+The format is defined byte by byte in `src/domain/format.rs`, with no serialization library in between. Formats v1 to v3 share this layout; v3 is written by this version:
 
 | Bytes | Field |
 |-------|-------|
@@ -81,8 +82,8 @@ The salt, nonce and parameters are stored in plaintext. This is standard and saf
 
 - **The header is authenticated.** Everything before the nonce is passed to AES-GCM as associated data, so changing any header byte (version, cost, salt) makes decryption fail, exactly like a wrong password.
 - **Costs are bounded before use.** The header can only be verified after the key is derived, so a file asking for more than 1 GiB of memory, 64 passes or 16 lanes is rejected as damaged before any derivation. A hostile file can't make unlock allocate gigabytes.
-- **No size limit, no lying lengths.** The plaintext (entry count, then each entry's strings and timestamps; notes exist from v2 on) is decoded by checking every length against the bytes actually present. A vault of any size reopens, and a corrupted length fails without reserving memory for it.
-- **Version 0** (before the format had a version): salt, nonce, a u64 ciphertext length and the ciphertext, with no associated data. These files, like v1 files, are read and rewritten in the current format on unlock (see Key Derivation).
+- **No size limit, no lying lengths.** The plaintext (entry count, then each entry's strings and timestamps; notes exist from v2 on, the password history from v3 on) is decoded by checking every length against the bytes actually present. A vault of any size reopens, and a corrupted length fails without reserving memory for it.
+- **Version 0** (before the format had a version): salt, nonce, a u64 ciphertext length and the ciphertext, with no associated data. These files, like v1 and v2 files, are read and rewritten in the current format on unlock (see Key Derivation).
 - A file from a **newer** version is refused with its version number, rather than misread.
 
 ### Nonce Reuse Prevention

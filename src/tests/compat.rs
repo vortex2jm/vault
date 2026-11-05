@@ -18,10 +18,13 @@ use crate::{
 const V0_FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/v0.vault");
 const V1_FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/v1.vault");
 const V2_FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/v2.vault");
+const V3_FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/v3.vault");
 const FIXTURE_PASSWORD: &str = "fixture-password";
 
-/// The entries every fixture holds. Notes exist from v2 on.
-fn assert_fixture_entries(engine: &Engine, with_notes: bool) {
+/// The entries every fixture holds, as far as the format `version` it was
+/// written in could carry them: notes from v2 on, previous passwords from v3
+/// on (github was created as "hunter0", then changed twice).
+fn assert_fixture_entries(engine: &Engine, version: u16) {
     assert_eq!(engine.get_entries().unwrap(), ["bank", "github", "wifi", "ção"]);
     let expected = [
         ("bank", "0042", "0099", "agência 0001"),
@@ -31,12 +34,18 @@ fn assert_fixture_entries(engine: &Engine, with_notes: bool) {
     ];
     for (service, username, password, notes) in expected {
         let entry = engine.get(service).unwrap();
-        let notes = if with_notes { notes } else { "" };
+        let notes = if version >= 2 { notes } else { "" };
         assert_eq!(
             (entry.username.as_str(), entry.passwd.as_str(), entry.notes.as_str()),
             (username, password, notes),
             "{service}"
         );
+        let history: Vec<&str> = entry.history.iter().map(|old| old.passwd.as_str()).collect();
+        let expected: &[&str] = match service {
+            "github" if version >= 3 => &["hunter1", "hunter0"],
+            _ => &[],
+        };
+        assert_eq!(history, expected, "{service}");
     }
 }
 
@@ -57,7 +66,7 @@ fn v0_vaults_are_rewritten_in_the_current_format() {
     let (dir, original) = copy_fixture(V0_FIXTURE);
     let mut engine = engine(&dir);
     assert_eq!(engine.unlock("fixture", FIXTURE_PASSWORD).unwrap(), Upgrade::Done);
-    assert_fixture_entries(&engine, false);
+    assert_fixture_entries(&engine, 0);
 
     // Current format; the original file is the backup. The test engine's
     // cost (CHEAP) is below the legacy one, and a key is never weakened.
@@ -68,7 +77,7 @@ fn v0_vaults_are_rewritten_in_the_current_format() {
     // It opens again, with nothing left to upgrade.
     engine.lock().unwrap();
     assert_eq!(engine.unlock("fixture", FIXTURE_PASSWORD).unwrap(), Upgrade::None);
-    assert_fixture_entries(&engine, false);
+    assert_fixture_entries(&engine, 0);
 }
 
 #[test]
@@ -78,7 +87,7 @@ fn v0_vaults_get_a_stronger_key_when_the_current_cost_is_higher() {
     let (dir, original) = copy_fixture(V0_FIXTURE);
     let mut engine = engine_with_kdf(dir.path(), stronger);
     assert_eq!(engine.unlock("fixture", FIXTURE_PASSWORD).unwrap(), Upgrade::Done);
-    assert_fixture_entries(&engine, false);
+    assert_fixture_entries(&engine, 0);
 
     let upgraded = current_file(&dir);
     assert_eq!((upgraded.version, upgraded.kdf), (CURRENT_VERSION, stronger));
@@ -86,29 +95,36 @@ fn v0_vaults_get_a_stronger_key_when_the_current_cost_is_higher() {
 }
 
 #[test]
-fn v1_vaults_are_rewritten_in_the_current_format_with_the_same_key() {
-    let (dir, original) = copy_fixture(V1_FIXTURE);
-    let before = VaultFile::decode(&original).unwrap();
-    assert_eq!(before.version, 1);
+fn v1_and_v2_vaults_are_rewritten_in_the_current_format_with_the_same_key() {
+    for (fixture, version) in [(V1_FIXTURE, 1), (V2_FIXTURE, 2)] {
+        let (dir, original) = copy_fixture(fixture);
+        let before = VaultFile::decode(&original).unwrap();
+        assert_eq!(before.version, version);
 
-    let mut engine = engine(&dir);
-    assert_eq!(engine.unlock("fixture", FIXTURE_PASSWORD).unwrap(), Upgrade::Done);
-    assert_fixture_entries(&engine, false);
+        let mut engine = engine(&dir);
+        assert_eq!(engine.unlock("fixture", FIXTURE_PASSWORD).unwrap(), Upgrade::Done, "v{version}");
+        assert_fixture_entries(&engine, version);
 
-    // Only the format changed: same salt and cost, so no key was derived again.
-    let after = current_file(&dir);
-    assert_eq!(after.version, CURRENT_VERSION);
-    assert_eq!((after.salt, after.kdf), (before.salt, before.kdf));
-    assert_eq!(fs::read(dir.file("fixture.bkp")).unwrap(), original);
+        // Only the format changed: same salt and cost, so no key was derived again.
+        let after = current_file(&dir);
+        assert_eq!(after.version, CURRENT_VERSION, "v{version}");
+        assert_eq!((after.salt, after.kdf), (before.salt, before.kdf), "v{version}");
+        assert_eq!(fs::read(dir.file("fixture.bkp")).unwrap(), original, "v{version}");
+
+        // What it held survives the rewrite.
+        engine.lock().unwrap();
+        assert_eq!(engine.unlock("fixture", FIXTURE_PASSWORD).unwrap(), Upgrade::None, "v{version}");
+        assert_fixture_entries(&engine, version);
+    }
 }
 
 #[test]
-fn v2_vaults_open_as_they_are() {
-    let (dir, original) = copy_fixture(V2_FIXTURE);
-    assert_eq!(VaultFile::decode(&original).unwrap().version, 2);
+fn v3_vaults_open_as_they_are() {
+    let (dir, original) = copy_fixture(V3_FIXTURE);
+    assert_eq!(VaultFile::decode(&original).unwrap().version, 3);
 
     let mut engine = engine(&dir);
     assert_eq!(engine.unlock("fixture", FIXTURE_PASSWORD).unwrap(), Upgrade::None);
-    assert_fixture_entries(&engine, true);
+    assert_fixture_entries(&engine, 3);
     assert_eq!(fs::read(dir.file("fixture.vault")).unwrap(), original, "opening rewrote it");
 }

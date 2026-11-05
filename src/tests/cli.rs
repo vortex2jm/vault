@@ -24,6 +24,7 @@ fn parses_every_command_with_its_arguments() {
         ("get github", Command::Get("github".into())),
         ("find", Command::Find(None)),
         ("find git", Command::Find(Some("git".into()))),
+        ("history github", Command::History("github".into())),
         ("copy github", Command::Copy("github".into())),
         ("update github", Command::Update("github".into())),
         ("rm github", Command::Remove("github".into())),
@@ -54,7 +55,7 @@ fn extra_whitespace_is_ignored() {
 fn missing_arguments_and_unknown_commands_are_rejected() {
     let inputs = [
         "", "   ", "create", "unlock", "drop", "add", "add github", "get", "copy", "update",
-        "rm", "rename", "export", "import", "frobnicate", "GET github",
+        "rm", "history", "rename", "export", "import", "frobnicate", "GET github",
     ];
     for input in inputs {
         assert_eq!(Command::parse(input), None, "{input:?}");
@@ -115,7 +116,7 @@ fn commands_that_take_an_argument_complete_with_a_trailing_space() {
 #[test]
 fn tab_completes_entry_names_after_entry_commands() {
     let entries = ["bank", "github", "gitlab"];
-    for command in ["get", "copy", "update", "rm", "find"] {
+    for command in ["get", "copy", "update", "rm", "find", "history"] {
         assert_eq!(
             complete_with(&format!("{command} gi"), &entries, &[]),
             (command.len() + 1, vec!["github".to_string(), "gitlab".to_string()]),

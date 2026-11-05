@@ -1,6 +1,6 @@
 //! The vault file format, byte by byte. Pure functions, no I/O.
 //!
-//! Versions 1 and 2 share this layout (2 is written by this version):
+//! Versions 1 to 3 share this layout (3 is written by this version):
 //!
 //! | bytes | field                                         |
 //! |-------|-----------------------------------------------|
@@ -23,21 +23,24 @@
 //!
 //! The plaintext is the entry count (u64 LE), then for each entry its
 //! service name once more as the map key, followed by service, username,
-//! password, notes (version 2 and later only), created_at (i64 LE) and
-//! updated_at (i64 LE). A string is its byte length (u64 LE) followed by
-//! UTF-8. Every length is checked against the bytes actually present, so
-//! there is no arbitrary size limit and nothing is allocated for a length
-//! that lies.
+//! password, notes (since version 2), the password history (since version
+//! 3: a count, u64 LE, then each previous password and when it was
+//! replaced, i64 LE), created_at (i64 LE) and updated_at (i64 LE). A string
+//! is its byte length (u64 LE) followed by UTF-8. Every length is checked
+//! against the bytes actually present, so there is no arbitrary size limit
+//! and nothing is allocated for a length that lies.
 
 use std::collections::BTreeMap;
 
-use crate::domain::models::{Entry, KdfParams};
+use crate::domain::models::{Entry, KdfParams, OldPassword};
 
 pub const MAGIC: [u8; 6] = *b"VAULT\0";
-pub const CURRENT_VERSION: u16 = 2;
+pub const CURRENT_VERSION: u16 = 3;
 
 /// First version whose entries have notes.
 const NOTES_SINCE: u16 = 2;
+/// First version whose entries keep their previous passwords.
+const HISTORY_SINCE: u16 = 3;
 
 const ARGON2ID: u8 = 1;
 
@@ -120,15 +123,20 @@ pub fn encode_entries(entries: &BTreeMap<String, Entry>) -> Vec<u8> {
         .iter()
         .map(|(key, e)| {
             let texts = [key, &e.service, &e.username, &e.passwd, &e.notes];
-            texts.iter().map(|text| 8 + text.len()).sum::<usize>() + 2 * 8
+            let history = 8 + e.history.iter().map(|old| 8 + old.passwd.len() + 8).sum::<usize>();
+            texts.iter().map(|text| 8 + text.len()).sum::<usize>() + history + 2 * 8
         })
         .sum::<usize>();
     let mut out = Vec::with_capacity(size);
     out.extend_from_slice(&(entries.len() as u64).to_le_bytes());
     for (key, entry) in entries {
         for text in [key, &entry.service, &entry.username, &entry.passwd, &entry.notes] {
-            out.extend_from_slice(&(text.len() as u64).to_le_bytes());
-            out.extend_from_slice(text.as_bytes());
+            put_text(&mut out, text);
+        }
+        out.extend_from_slice(&(entry.history.len() as u64).to_le_bytes());
+        for old in &entry.history {
+            put_text(&mut out, &old.passwd);
+            out.extend_from_slice(&old.replaced_at.to_le_bytes());
         }
         out.extend_from_slice(&entry.created_at.to_le_bytes());
         out.extend_from_slice(&entry.updated_at.to_le_bytes());
@@ -138,7 +146,8 @@ pub fn encode_entries(entries: &BTreeMap<String, Entry>) -> Vec<u8> {
 }
 
 /// Parses the plaintext of a file in format `version`: written by
-/// [`encode_entries`] for the current one, without notes before version 2.
+/// [`encode_entries`] for the current one; older versions lack the notes
+/// (before 2) and the history (before 3).
 pub fn decode_entries(bytes: &[u8], version: u16) -> Result<BTreeMap<String, Entry>, FormatError> {
     let mut reader = Reader { bytes };
     let count = reader.u64()?;
@@ -155,6 +164,11 @@ pub fn decode_entries(bytes: &[u8], version: u16) -> Result<BTreeMap<String, Ent
             } else {
                 String::new()
             },
+            history: if version >= HISTORY_SINCE {
+                reader.history()?
+            } else {
+                Vec::new()
+            },
             created_at: reader.i64()?,
             updated_at: reader.i64()?,
         };
@@ -162,6 +176,11 @@ pub fn decode_entries(bytes: &[u8], version: u16) -> Result<BTreeMap<String, Ent
     }
     reader.finish()?;
     Ok(entries)
+}
+
+fn put_text(out: &mut Vec<u8>, text: &str) {
+    out.extend_from_slice(&(text.len() as u64).to_le_bytes());
+    out.extend_from_slice(text.as_bytes());
 }
 
 fn decode_v0(bytes: &[u8]) -> Result<VaultFile, FormatError> {
@@ -260,6 +279,19 @@ impl<'a> Reader<'a> {
             .ok()
             .filter(|&len| len <= self.bytes.len())
             .ok_or(FormatError::Truncated)
+    }
+
+    /// A password history; a lying count just runs out of bytes.
+    fn history(&mut self) -> Result<Vec<OldPassword>, FormatError> {
+        let count = self.u64()?;
+        let mut history = Vec::new();
+        for _ in 0..count {
+            history.push(OldPassword {
+                passwd: self.string()?,
+                replaced_at: self.i64()?,
+            });
+        }
+        Ok(history)
     }
 
     fn string(&mut self) -> Result<String, FormatError> {

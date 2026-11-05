@@ -183,6 +183,33 @@ fn notes_can_be_added_shown_and_edited() {
 }
 
 #[test]
+fn history_lists_the_previous_passwords_newest_first() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "pw");
+    s.add("github", "alice", "first-pw");
+    s.command("history github");
+    s.expect("(no previous passwords for 'github')");
+
+    for password in ["second-pw", "third-pw"] {
+        s.command("update github");
+        s.answer("New username (blank to keep): ", "");
+        s.answer("New password (blank to keep): ", password);
+        s.answer("Notes: ", "");
+        s.expect("Entry 'github' updated.");
+    }
+    s.command("history github");
+    let out = s.output();
+    let (second, first) = (out.find("second-pw"), out.find("first-pw"));
+    assert!(second.is_some() && first.is_some() && second < first, "newest first: {out}");
+    assert!(!out.contains("third-pw"), "the current password is not history: {out}");
+
+    s.command("history nope");
+    s.expect("Entry not found");
+    s.exit_discarding();
+}
+
+#[test]
 fn ls_lists_vaults_when_locked_and_entries_when_unlocked() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());

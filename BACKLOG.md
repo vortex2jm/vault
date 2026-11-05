@@ -29,7 +29,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 - [x] 🟠 **B8** After `passwd`, the `.bkp` still opens with the old password until the next commit.
 - [ ] 🟠 **B9** Empty or weak master passwords are accepted (`create`, `passwd`).
 - [x] 🟡 **B10** `gen` has no upper bound: `gen 99999999999` aborts the process and loses uncommitted changes.
-- [ ] 🟡 **B11** Incomplete zeroization: old password dropped on `update`, removed entry dropped on `rm`, no wipe on exit without `lock`, `serialize_into` reallocations, `zeroize` features of `argon2`/`aes-gcm` off, first password leaked when the second prompt fails, `Entry` derives `Debug`.
+- [ ] 🟡 **B11** Incomplete zeroization: removed entry dropped on `rm`, no wipe on exit without `lock`, `serialize_into` reallocations, `zeroize` features of `argon2`/`aes-gcm` off, first password leaked when the second prompt fails, `Entry` derives `Debug`.
 - [x] 🟡 **B12** `clear` doesn't clear the scrollback (`\x1b[3J`), so passwords shown by `get` stay in the terminal history.
 - [ ] 🟡 **B13** Docs out of date: MSRV is 1.88 (let chains), placeholder clone URL, Wayland and `0o600` claims, missing ports/operations/dependencies, nonce birthday bound, zeroization and crash-safety claims. Add a warning against round-tripping CSV exports through spreadsheets (they drop leading zeros).
 - [ ] 🟡 **B15** Dependencies: replace `dirs-2` with `std::env::home_dir`; turn off `arboard` default features (they pull `image`, `png`, `tiff`).
@@ -56,7 +56,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 ## Extras
 
 - [ ] **X2** Lean health report: reused and short passwords (age as information only).
-- [ ] **X3** Password history per entry (last N passwords with dates). Needs E1.
+- [x] **X3** Password history per entry (last N passwords with dates). Needs E1.
 
 ## Dropped
 

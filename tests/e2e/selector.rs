@@ -16,7 +16,8 @@ fn with_entries(home: &TempDir) -> Session {
     s
 }
 
-const ACTIONS: [&str; 5] = ["Copy password", "Copy username", "Show", "Update", "Remove"];
+const ACTIONS: [&str; 6] =
+    ["Copy password", "Copy username", "Show", "History", "Update", "Remove"];
 
 /// In the action menu of `service`, moves down to `action` and picks it.
 fn choose(s: &mut Session, service: &str, action: &str) {
@@ -83,6 +84,26 @@ fn the_menu_runs_the_usual_commands() {
     s.command("ls");
     let out = s.output();
     assert!(out.contains("github") && !out.contains("bank"), "{out}");
+    s.exit_discarding();
+}
+
+#[test]
+fn the_menu_shows_the_previous_passwords() {
+    let home = TempDir::new();
+    let mut s = with_entries(&home);
+    s.command("update github");
+    s.answer("New username (blank to keep): ", "");
+    s.answer("New password (blank to keep): ", "hunter3");
+    s.answer("Notes: ", "");
+    s.expect("Entry 'github' updated.");
+
+    s.command("find github");
+    s.expect("❯ github");
+    s.key(b"\r");
+    choose(&mut s, "github", "History");
+    s.expect("github: previous passwords, newest first");
+    let out = s.output();
+    assert!(out.contains("hunter2") && !out.contains("hunter3"), "{out}");
     s.exit_discarding();
 }
 

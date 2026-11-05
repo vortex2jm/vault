@@ -8,7 +8,7 @@
 src/tests/                unit and component tests of the crate internals
 ├── support.rs            TempDir and engine helpers, the cheap test KDF cost
 ├── domain.rs             Entry, KdfParams
-├── format.rs             the file format byte by byte: both versions, plaintext codec
+├── format.rs             the file format byte by byte: every version, plaintext codec
 ├── crypto.rs             AesGcmCrypto: key derivation, AES-GCM, generator
 ├── storage.rs            FileStorage: files, backups, atomic saves, sessions
 ├── engine.rs             VaultEngine flows with the real adapters, upgrades
@@ -26,6 +26,7 @@ tests/e2e/                the real binary in a pseudo-terminal (Unix only)
 tests/fixtures/v0.vault   a vault from before the versioned format
 tests/fixtures/v1.vault   a vault in format v1
 tests/fixtures/v2.vault   a vault in format v2, with notes
+tests/fixtures/v3.vault   a vault in format v3, with notes and a password history
 ```
 
 ## Running
@@ -42,7 +43,7 @@ tests/fixtures/v2.vault   a vault in format v2, with notes
 
 - **Every backlog item ships with tests.** A bug fix makes its `known_bugs` test pass: remove the `#[ignore]` and move the test to the module of its area, in the commit that ticks the item in `BACKLOG.md`. A feature adds tests to the module of its area, and to `tests/e2e/` if it shows up in the terminal.
 - **Known-bug tests describe the behaviour we want**, not the current one. When more than one fix is acceptable (refusing an operation instead of handling it, say), the test accepts any of them and checks the invariant.
-- **Never regenerate the fixtures.** Each `tests/fixtures/vN.vault` proves that vaults written in format N still open. When the format changes again, add a `v3.vault` with the same entries and keep every older test. The password and the expected entries are in `src/tests/compat.rs`.
+- **Never regenerate the fixtures.** Each `tests/fixtures/vN.vault` proves that vaults written in format N still open. When the format changes again, add a `v4.vault` with the same entries and keep every older test. The password and the expected entries are in `src/tests/compat.rs`.
 - **End-to-end tests type like a user.** `Session::command` waits for the prompt and runs a line, `answer` replies to a sub-prompt (password, y/N, the exit menu), `output` returns what the last command printed, and `expect` waits for any text. Escape sequences are stripped before matching.
 
 ## Speed
