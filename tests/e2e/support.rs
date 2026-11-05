@@ -131,6 +131,11 @@ impl Session {
         Self { child, terminal, transcript, seen: 0 }
     }
 
+    /// The process id of the running binary.
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
     /// Types raw bytes.
     pub fn send(&mut self, keys: &[u8]) {
         self.terminal.write_all(keys).unwrap();

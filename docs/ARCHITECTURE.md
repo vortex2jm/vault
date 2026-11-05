@@ -8,7 +8,7 @@ Vault follows a **Hexagonal (Ports & Adapters)** architecture. The domain and ap
 
 ```
 src/
-├── main.rs                   # Entry point: wires adapters → engine → CLI
+├── main.rs                   # Entry point: hardens the process, wires adapters → engine → CLI
 │
 ├── domain/                   # Pure business rules, no I/O, no deps
 │   ├── mod.rs
@@ -25,6 +25,7 @@ src/
     ├── mod.rs
     ├── aes_crypto.rs         # CryptoPort impl: AES-256-GCM + Argon2id
     ├── file_storage.rs       # StoragePort impl: ~/.vault/ filesystem
+    ├── process.rs            # no core dumps, no same-user debugging
     └── cli/
         ├── mod.rs            # VaultCli — REPL loop, command dispatch
         ├── commands.rs       # Command enum

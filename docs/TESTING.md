@@ -21,6 +21,7 @@ tests/e2e/                the real binary in a pseudo-terminal (Unix only)
 ├── flows.rs              everyday flows: create, add, commit, exit menu, passwd…
 ├── editing.rs            line editing: Tab, history, cursor keys, Ctrl-C, Ctrl-D
 ├── selector.rs           the find selector: arrows, fuzzy filter, action menu
+├── process.rs            the process: no core dumps, no same-user memory reads (Linux)
 └── known_bugs.rs         open bugs that only show up in a terminal, #[ignore]d
 
 tests/fixtures/v0.vault   a vault from before the versioned format

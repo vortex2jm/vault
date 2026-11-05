@@ -51,7 +51,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 - [ ] **E8** `status` (changes since the last commit) and `discard` (drop uncommitted changes without locking).
 - [ ] **E9** `restore` from the `.bkp`.
 - [ ] **E10** Generator options: no symbols, no ambiguous characters, passphrases.
-- [ ] **E11** Disable core dumps and same-user ptrace (`prctl(PR_SET_DUMPABLE, 0)`).
+- [x] **E11** Disable core dumps and same-user ptrace (`prctl(PR_SET_DUMPABLE, 0)`).
 
 ## Extras
 

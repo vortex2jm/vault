@@ -14,7 +14,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **Notes and password history** on each entry: the last 10 passwords are kept, with the date each one was replaced
 - **Crash-safe saves**: every commit writes a new file and atomically swaps it in, keeping the previous version as a backup
 - **Safe across sessions**: open the same vault in two terminals; a commit never overwrites what the other one saved
-- **Strict Security**: Memory zeroization (secrets never linger), owner-only permissions on Unix (`0700` directory; `0600` vaults, backups and exports), and path traversal protection.
+- **Strict Security**: Memory zeroization (secrets never linger), no core dumps, no debugging or memory reads by your other programs (Linux), owner-only permissions on Unix (`0700` directory; `0600` vaults, backups and exports), and path traversal protection.
 - **Zero network access** — entirely offline
 
 ---

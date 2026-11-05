@@ -122,6 +122,7 @@ A crash or power loss at any point leaves each file either in its old state or i
 | Offline brute force on stolen vault file | Argon2id key derivation makes each attempt expensive; new master passwords need at least 8 characters |
 | Ciphertext tampering | AES-GCM authentication tag — decryption fails on any modification |
 | Header tampering (cost, salt, version) | The header is AES-GCM associated data; costs from a file are bounded before any key is derived |
+| Core dumps, and other programs of the same user reading memory | No core dumps (`RLIMIT_CORE` = 0 on Unix). On Linux the process is non-dumpable (`PR_SET_DUMPABLE` = 0): a debugger can't attach and `/proc/<pid>/mem` can't be read without root |
 | Secrets lingering in RAM after lock | `ZeroizeOnDrop` on the key and on entries, `Zeroizing` for typed secrets, Argon2 memory and AES round keys wiped (see Key Material Handling for the gaps) |
 | Vault file corruption on crash | Atomic replace: temporary file + `fsync` + `rename` + directory `fsync` |
 | Lost updates between sessions | A commit is refused if another session saved since this one loaded the vault |
@@ -157,3 +158,4 @@ A crash or power loss at any point leaves each file either in its old state or i
 | `chrono` | Timestamps on entries |
 | `csv` | `export` and `import` |
 | `arboard` | Clipboard for `copy`, text only (default features off: they add image support) |
+| `libc` | No core dumps, no same-user debugging (Unix) |

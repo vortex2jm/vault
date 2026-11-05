@@ -25,8 +25,9 @@ zeroize = { version = "1.8.2", features = ["derive"] }
 # It adds no crate, since aes-gcm already uses it: keep the version in step.
 aes = { version = "0.8.4", features = ["zeroize"] }
 
-# Pseudo-terminal for the end-to-end tests in tests/e2e/.
-[target.'cfg(unix)'.dev-dependencies]
+# No core dumps, no same-user debugging (adapters/process.rs); also the
+# pseudo-terminal of the end-to-end tests in tests/e2e/. Already in the tree.
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 # Argon2 is very slow without optimisations: compile it (and its hash) with
