@@ -2,6 +2,7 @@ pub(crate) mod commands;
 pub(crate) mod ui;
 
 use anyhow::Result;
+use dialoguer::{FuzzySelect, Select, theme::ColorfulTheme};
 use rustyline::{Editor, error::ReadlineError, history::DefaultHistory};
 use std::io::{self, Write};
 use zeroize::Zeroize;
@@ -161,14 +162,12 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             }
 
             Command::Copy(s) => {
-                let e = self.engine.get(&s)?;
-                let mut clipboard = arboard::Clipboard::new()
-                    .map_err(|e| anyhow::anyhow!("Clipboard unavailable: {}", e))?;
-                clipboard
-                    .set_text(e.passwd.clone())
-                    .map_err(|e| anyhow::anyhow!("Failed to copy: {}", e))?;
+                let password = self.engine.get(&s)?.passwd.clone();
+                copy_to_clipboard(password)?;
                 println!("Password for '{}' copied to clipboard.\n", s);
             }
+
+            Command::Find(filter) => self.find(filter.unwrap_or_default())?,
 
             Command::Gen(length) => {
                 let len = length.unwrap_or(20);
@@ -369,6 +368,52 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
         Ok(rpassword::read_password()?)
     }
 
+    /// Interactive selector: pick an entry (arrows move, typing filters, Esc
+    /// cancels), then choose what to do with it.
+    fn find(&mut self, filter: String) -> Result<()> {
+        let entries = self.engine.get_entries()?;
+        if entries.is_empty() {
+            println!("  (no entries)\n");
+            return Ok(());
+        }
+        let theme = ColorfulTheme::default();
+
+        let picked = FuzzySelect::with_theme(&theme)
+            .with_prompt("Entry")
+            .items(&entries)
+            .with_initial_text(filter)
+            // Highlight the best match from the start, so Enter picks it.
+            .default(0)
+            .max_length(10)
+            .interact_opt();
+        let Some(service) = chosen(picked)?.map(|i| entries[i].clone()) else {
+            println!("Aborted.\n");
+            return Ok(());
+        };
+
+        let action = Select::with_theme(&theme)
+            .with_prompt(&service)
+            .items(["Copy password", "Copy username", "Show", "Update", "Remove"])
+            .default(0)
+            .interact_opt();
+        match chosen(action)? {
+            Some(0) => self.handle_command(Command::Copy(service)),
+            Some(1) => {
+                let username = self.engine.get(&service)?.username.clone();
+                copy_to_clipboard(username)?;
+                println!("Username for '{service}' copied to clipboard.\n");
+                Ok(())
+            }
+            Some(2) => self.handle_command(Command::Get(service)),
+            Some(3) => self.handle_command(Command::Update(service)),
+            Some(_) => self.handle_command(Command::Remove(service)),
+            None => {
+                println!("Aborted.\n");
+                Ok(())
+            }
+        }
+    }
+
     /// Asks a yes/no question. Anything but `y` (Ctrl-C and Ctrl-D included) means no.
     fn confirm(&mut self, msg: &str) -> bool {
         matches!(
@@ -393,6 +438,7 @@ passwd               Change vault master password
 drop <name>          Permanently delete a vault (must be locked first)
 add <svc> <user>     Add entry
 get <svc>            Show entry (user + pass)
+find [term]          Pick an entry from a list (arrows, type to filter)
 copy <svc>           Copy password to clipboard
 update <svc>         Update username/password of entry
 rm <svc>             Remove entry
@@ -409,6 +455,29 @@ exit                 Exit (prompts if unsaved changes)
 "#
         );
     }
+}
+
+/// The choice made in a dialoguer list, with Ctrl-C treated like Esc: `None`.
+fn chosen(result: dialoguer::Result<Option<usize>>) -> Result<Option<usize>> {
+    match result {
+        Err(dialoguer::Error::IO(e)) if e.kind() == io::ErrorKind::Interrupted => {
+            // dialoguer leaves the cursor hidden when Ctrl-C interrupts it.
+            eprint!("\x1b[?25h");
+            println!();
+            Ok(None)
+        }
+        other => Ok(other?),
+    }
+}
+
+/// Puts `text` on the clipboard.
+fn copy_to_clipboard(text: String) -> Result<()> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| anyhow::anyhow!("Clipboard unavailable: {}", e))?;
+    clipboard
+        .set_text(text)
+        .map_err(|e| anyhow::anyhow!("Failed to copy: {}", e))?;
+    Ok(())
 }
 
 /// Expands a leading `~` to the user's home directory.

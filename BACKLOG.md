@@ -37,7 +37,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 ## Features
 
 - [x] **F1** Context-aware Tab completion: commands in the first word, entry names after `get`/`copy`/`rm`/`update`, vault names after `unlock`/`drop`, file paths after `import`/`export`. Fixes commands being suggested at any position.
-- [ ] **F2** Interactive selector: browse entries with ↑/↓, fuzzy filter while typing, Enter to act (copy, show, …).
+- [x] **F2** Interactive selector: browse entries with ↑/↓, fuzzy filter while typing, Enter to act (copy, show, …).
 - [ ] **F3** Description/notes on entries. Needs E1.
 
 ## Essentials

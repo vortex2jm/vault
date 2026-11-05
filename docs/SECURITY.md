@@ -133,6 +133,7 @@ This ensures that a crash or power loss during a write does not leave the vault 
 | `serde` | Derive serialize/deserialize for models |
 | `sha2` | SHA-256 for backup integrity check |
 | `rustyline` | Line editing, history, tab-completion |
+| `dialoguer` | Interactive selector for `find` (arrow keys, fuzzy filter) |
 | `anyhow` | Error propagation in the CLI layer |
 | `thiserror` | Typed error definitions |
 | `chrono` | Timestamps on entries |

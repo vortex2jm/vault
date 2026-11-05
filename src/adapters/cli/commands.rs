@@ -18,6 +18,7 @@ pub enum Command {
     Import(String),
     Update(String),
     Drop(String),
+    Find(Option<String>),
     Gen(Option<usize>),
     Add { service: String, username: String },
 }
@@ -40,7 +41,7 @@ impl Command {
     /// command takes no argument.
     pub fn first_argument(name: &str) -> Option<Argument> {
         match name {
-            "get" | "copy" | "update" | "rm" => Some(Argument::Entry),
+            "get" | "copy" | "update" | "rm" | "find" => Some(Argument::Entry),
             "unlock" | "drop" => Some(Argument::Vault),
             "import" | "export" => Some(Argument::Path),
             "create" | "add" | "rename" | "gen" => Some(Argument::Free),
@@ -50,7 +51,7 @@ impl Command {
 
     /// Every command name, as offered by Tab completion.
     pub const NAMES: &'static [&'static str] = &[
-        "create", "unlock", "lock", "add", "get", "rm", "commit", "ls", "list",
+        "create", "unlock", "lock", "add", "get", "find", "rm", "commit", "ls", "list",
         "update", "rename", "copy", "gen", "info", "export", "import",
         "drop", "passwd",
         "help", "exit", "clear",
@@ -70,6 +71,7 @@ impl Command {
                 username: p.next()?.into(),
             },
             "get"    => Command::Get(p.next()?.into()),
+            "find"   => Command::Find(p.next().map(Into::into)),
             "rm"     => Command::Remove(p.next()?.into()),
             "update" => Command::Update(p.next()?.into()),
             "rename" => Command::Rename(p.next()?.into()),

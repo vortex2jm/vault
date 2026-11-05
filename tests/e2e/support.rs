@@ -31,7 +31,9 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 const PROMPT_START: &str = "\u{1}";
 
 pub const MENU: &str = "Choose an option [1-3]: ";
+pub const ESC: &[u8] = b"\x1b";
 pub const UP: &[u8] = b"\x1b[A";
+pub const DOWN: &[u8] = b"\x1b[B";
 pub const LEFT: &[u8] = b"\x1b[D";
 pub const TAB: &[u8] = b"\t";
 pub const CTRL_C: &[u8] = b"\x03";
@@ -92,6 +94,9 @@ impl Session {
         command
             .env("HOME", home)
             .env("TERM", "xterm-256color")
+            // No display: a test must never touch the real clipboard.
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
             .stdin(Stdio::from(slave.try_clone().unwrap()))
             .stdout(Stdio::from(slave.try_clone().unwrap()))
             .stderr(Stdio::from(slave));

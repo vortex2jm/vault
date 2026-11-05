@@ -19,6 +19,7 @@ tests/e2e/                the real binary in a pseudo-terminal (Unix only)
 ├── support.rs            the harness: Session, TempDir, key codes
 ├── flows.rs              everyday flows: create, add, commit, exit menu, passwd…
 ├── editing.rs            line editing: Tab, history, cursor keys, Ctrl-C, Ctrl-D
+├── selector.rs           the find selector: arrows, fuzzy filter, action menu
 └── known_bugs.rs         open bugs that only show up in a terminal, #[ignore]d
 
 tests/fixtures/v0.vault   a vault written in the current (v0) format

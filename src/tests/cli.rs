@@ -22,6 +22,8 @@ fn parses_every_command_with_its_arguments() {
             Command::Add { service: "github".into(), username: "alice".into() },
         ),
         ("get github", Command::Get("github".into())),
+        ("find", Command::Find(None)),
+        ("find git", Command::Find(Some("git".into()))),
         ("copy github", Command::Copy("github".into())),
         ("update github", Command::Update("github".into())),
         ("rm github", Command::Remove("github".into())),
@@ -113,7 +115,7 @@ fn commands_that_take_an_argument_complete_with_a_trailing_space() {
 #[test]
 fn tab_completes_entry_names_after_entry_commands() {
     let entries = ["bank", "github", "gitlab"];
-    for command in ["get", "copy", "update", "rm"] {
+    for command in ["get", "copy", "update", "rm", "find"] {
         assert_eq!(
             complete_with(&format!("{command} gi"), &entries, &[]),
             (command.len() + 1, vec!["github".to_string(), "gitlab".to_string()]),

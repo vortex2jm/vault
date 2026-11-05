@@ -10,6 +10,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **Argon2id** key derivation (memory-hard, resistant to brute force)
 - **Multiple named vaults** — one per context (work, personal, etc.)
 - **Tab-completion** of commands, entry names, vault names and file paths, and **command history** in the interactive shell
+- **Interactive selector** (`find`): browse your entries with the arrow keys and fuzzy search
 - **Automatic backup + SHA-256 integrity check** before every write
 - **Strict Security**: Memory zeroization (secrets never linger), `0o600` restrictive file permissions (Unix), and path traversal protection.
 - **Zero network access** — entirely offline
@@ -84,6 +85,7 @@ vault[locked]>
 | **Entries** |
 | `add` | `<service> <user>` | Add a credential entry |
 | `get` | `<service>` | Show a credential entry (username and password) |
+| `find` | `[term]` | Pick an entry from an interactive list (↑/↓ to move, type to filter), then copy, show, update or remove it |
 | `copy` | `<service>` | Copy a password directly to the OS clipboard |
 | `update` | `<service>` | Update username/password of an entry (leave blank to keep current) |
 | `rm` | `<service>` | Remove a credential entry |
