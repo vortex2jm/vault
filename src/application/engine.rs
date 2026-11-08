@@ -523,6 +523,29 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
 
     /// Permanently deletes a vault by name. Requires the vault to be locked
     /// to prevent accidentally deleting the currently open vault.
+    /// Renames entry `old` to `new`, keeping everything else: password,
+    /// notes, history and creation date.
+    pub fn rename_entry(&mut self, old: &str, new: &str) -> Result<(), VaultError> {
+        if self.is_locked() {
+            return Err(VaultError::Locked);
+        }
+        Self::check_service_name(new)?;
+        if !self.entries.contains_key(old) {
+            return Err(VaultError::EntryNotFound);
+        }
+        if old == new {
+            return Ok(());
+        }
+        if self.entries.contains_key(new) {
+            return Err(VaultError::EntryExists);
+        }
+        let mut entry = self.entries.remove(old).ok_or(VaultError::EntryNotFound)?;
+        entry.rename(new.to_string());
+        self.entries.insert(new.to_string(), entry);
+        self.dirty = true;
+        Ok(())
+    }
+
     pub fn delete_vault(&self, name: &str) -> Result<(), VaultError> {
         if !self.is_locked() {
             return Err(VaultError::Unlocked);

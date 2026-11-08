@@ -22,6 +22,7 @@ pub enum Command {
     History(String),
     Gen(Option<usize>),
     Add { service: String, username: String },
+    Move { from: String, to: String },
 }
 
 /// What a command's first argument refers to, so Tab knows what to offer.
@@ -42,7 +43,7 @@ impl Command {
     /// command takes no argument.
     pub fn first_argument(name: &str) -> Option<Argument> {
         match name {
-            "get" | "copy" | "update" | "rm" | "find" | "history" => Some(Argument::Entry),
+            "get" | "copy" | "update" | "rm" | "find" | "history" | "mv" => Some(Argument::Entry),
             "unlock" | "drop" => Some(Argument::Vault),
             "import" | "export" => Some(Argument::Path),
             "create" | "add" | "rename" | "gen" => Some(Argument::Free),
@@ -52,7 +53,7 @@ impl Command {
 
     /// Every command name, as offered by Tab completion.
     pub const NAMES: &'static [&'static str] = &[
-        "create", "unlock", "lock", "add", "get", "find", "history", "rm", "commit", "ls", "list",
+        "create", "unlock", "lock", "add", "get", "find", "history", "rm", "mv", "commit", "ls", "list",
         "update", "rename", "copy", "gen", "info", "export", "import",
         "drop", "passwd",
         "help", "exit", "clear",
@@ -75,6 +76,10 @@ impl Command {
             "find"   => Command::Find(p.next().map(Into::into)),
             "history" => Command::History(p.next()?.into()),
             "rm"     => Command::Remove(p.next()?.into()),
+            "mv"     => Command::Move {
+                from: p.next()?.into(),
+                to: p.next()?.into(),
+            },
             "update" => Command::Update(p.next()?.into()),
             "rename" => Command::Rename(p.next()?.into()),
             "copy"   => Command::Copy(p.next()?.into()),

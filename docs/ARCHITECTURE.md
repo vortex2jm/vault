@@ -83,6 +83,7 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 | `commit()` | Encrypts current entries, saves to disk with fresh nonce |
 | `add(svc, user, pw)` | Inserts a new `Entry`, marks dirty |
 | `delete(svc)` | Removes entry (marks dirty only on success) |
+| `rename_entry(old, new)` | Renames an entry, keeping its password, notes, history and creation date |
 | `get(svc)` | Returns a reference to an entry |
 | `get_entries()` | Returns sorted list of service names |
 | `get_vaults()` | Delegates to `StoragePort::list_vaults` |

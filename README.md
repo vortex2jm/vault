@@ -93,6 +93,7 @@ vault[locked]>
 | `history` | `<service>` | Show an entry's previous passwords, newest first, with the date each was replaced (the last 10 are kept) |
 | `copy` | `<service>` | Copy a password to the clipboard, out of clipboard managers' history; cleared after 30 s or when vault exits |
 | `update` | `<service>` | Update an entry: blank keeps the username or password; a new password sends the old one to the history; the notes come pre-filled to edit |
+| `mv` | `<service> <new>` | Rename an entry (password, notes and history stay) |
 | `rm` | `<service>` | Remove a credential entry |
 | `gen` | `[length]` | Generate a random strong password (8–256 chars, default: 20) |
 | **Data & I/O** |

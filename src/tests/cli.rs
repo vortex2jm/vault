@@ -28,6 +28,7 @@ fn parses_every_command_with_its_arguments() {
         ("copy github", Command::Copy("github".into())),
         ("update github", Command::Update("github".into())),
         ("rm github", Command::Remove("github".into())),
+        ("mv github gh", Command::Move { from: "github".into(), to: "gh".into() }),
         ("gen", Command::Gen(None)),
         ("gen 32", Command::Gen(Some(32))),
         ("commit", Command::Commit),
@@ -55,7 +56,7 @@ fn extra_whitespace_is_ignored() {
 fn missing_arguments_and_unknown_commands_are_rejected() {
     let inputs = [
         "", "   ", "create", "unlock", "drop", "add", "add github", "get", "copy", "update",
-        "rm", "history", "rename", "export", "import", "frobnicate", "GET github",
+        "rm", "history", "mv", "mv github", "rename", "export", "import", "frobnicate", "GET github",
     ];
     for input in inputs {
         assert_eq!(Command::parse(input), None, "{input:?}");
@@ -116,7 +117,7 @@ fn commands_that_take_an_argument_complete_with_a_trailing_space() {
 #[test]
 fn tab_completes_entry_names_after_entry_commands() {
     let entries = ["bank", "github", "gitlab"];
-    for command in ["get", "copy", "update", "rm", "find", "history"] {
+    for command in ["get", "copy", "update", "rm", "find", "history", "mv"] {
         assert_eq!(
             complete_with(&format!("{command} gi"), &entries, &[]),
             (command.len() + 1, vec!["github".to_string(), "gitlab".to_string()]),
@@ -144,7 +145,7 @@ fn commands_are_only_completed_in_the_first_word() {
 #[test]
 fn nothing_is_offered_where_a_new_name_or_a_second_argument_goes() {
     let (entries, vaults) = (["github"], ["personal"]);
-    for line in ["create p", "add g", "rename p", "gen 1", "lock x", "add github a", "get github x"] {
+    for line in ["create p", "add g", "rename p", "gen 1", "lock x", "add github a", "get github x", "mv github g"] {
         assert!(complete_with(line, &entries, &vaults).1.is_empty(), "{line:?}");
     }
 }

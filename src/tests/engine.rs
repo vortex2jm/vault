@@ -673,6 +673,57 @@ fn add_refuses_service_names_commands_cannot_reach() {
 }
 
 #[test]
+fn mv_renames_an_entry_and_keeps_the_rest() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "personal", "password");
+    engine.add("github", "alice", "first").unwrap();
+    engine.update("github", None, Some("second".into())).unwrap();
+    engine.set_notes("github", "2FA on".into()).unwrap();
+    let created_at = engine.get("github").unwrap().created_at;
+    engine.commit().unwrap();
+
+    engine.rename_entry("github", "gh").unwrap();
+    assert!(engine.is_dirty());
+    assert!(matches!(engine.get("github"), Err(VaultError::EntryNotFound)));
+    let entry = engine.get("gh").unwrap();
+    assert_eq!(entry.service, "gh");
+    assert_eq!(
+        (entry.username.as_str(), entry.passwd.as_str(), entry.notes.as_str()),
+        ("alice", "second", "2FA on")
+    );
+    assert_eq!((entry.history.len(), entry.created_at), (1, created_at));
+
+    engine.commit().unwrap();
+    engine.lock().unwrap();
+    engine.unlock("personal", "password").unwrap();
+    assert_eq!(engine.get_entries().unwrap(), ["gh"]);
+    assert_eq!(engine.get("gh").unwrap().service, "gh");
+}
+
+#[test]
+fn mv_refuses_what_it_cannot_do() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "personal", "password");
+    engine.add("github", "alice", "p").unwrap();
+    engine.add("bank", "bob", "q").unwrap();
+    engine.commit().unwrap();
+
+    assert!(matches!(engine.rename_entry("nope", "x"), Err(VaultError::EntryNotFound)));
+    assert!(matches!(engine.rename_entry("github", "bank"), Err(VaultError::EntryExists)));
+    assert!(matches!(
+        engine.rename_entry("github", "My Git"),
+        Err(VaultError::InvalidServiceName(_))
+    ));
+    engine.rename_entry("github", "github").unwrap(); // nothing to do
+    assert!(!engine.is_dirty());
+    assert_eq!(engine.get_entries().unwrap(), ["bank", "github"]);
+    assert_eq!(engine.get("bank").unwrap().username, "bob");
+
+    engine.lock().unwrap();
+    assert!(matches!(engine.rename_entry("github", "gh"), Err(VaultError::Locked)));
+}
+
+#[test]
 fn previous_passwords_are_saved_with_the_entry() {
     let dir = TempDir::new();
     let mut engine = created(&dir, "personal", "password");

@@ -162,6 +162,11 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                 println!("Entry '{}' updated.\n", s);
             }
 
+            Command::Move { from, to } => {
+                self.engine.rename_entry(&from, &to)?;
+                println!("Entry '{from}' renamed to '{to}'.\n");
+            }
+
             Command::Commit => {
                 self.engine.commit()?;
                 println!("Changes committed.\n");
@@ -513,6 +518,7 @@ find [term]          Pick an entry from a list (arrows, type to filter)
 history <svc>        Show the previous passwords of an entry
 copy <svc>           Copy password to clipboard (cleared after 30 s)
 update <svc>         Update username, password or notes of entry
+mv <svc> <new>       Rename an entry
 rm <svc>             Remove entry
 commit               Save changes to disk
 rename <new>         Rename current vault

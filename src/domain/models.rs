@@ -42,6 +42,12 @@ impl Entry {
         }
     }
 
+    /// Gives the entry a new service name.
+    pub fn rename(&mut self, service: String) {
+        self.service = service;
+        self.updated_at = chrono::Utc::now().timestamp();
+    }
+
     /// Replaces the notes, wiping the old text first: notes can hold
     /// recovery codes or PINs.
     pub fn set_notes(&mut self, notes: String) {

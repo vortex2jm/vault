@@ -235,6 +235,21 @@ fn history_lists_the_previous_passwords_newest_first() {
 }
 
 #[test]
+fn mv_renames_an_entry() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "password");
+    s.add("github", "alice", "hunter2");
+    s.command("mv github gh");
+    s.expect("Entry 'github' renamed to 'gh'.");
+    s.command("get gh");
+    assert!(s.output().contains("pass: hunter2"));
+    s.command("get github");
+    s.expect("Entry not found");
+    s.exit_discarding();
+}
+
+#[test]
 fn ls_lists_vaults_when_locked_and_entries_when_unlocked() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
