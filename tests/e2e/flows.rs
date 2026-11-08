@@ -235,6 +235,23 @@ fn history_lists_the_previous_passwords_newest_first() {
 }
 
 #[test]
+fn copy_takes_an_optional_field() {
+    // The tests run without a display, so a copy that was understood stops at
+    // the clipboard.
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "password");
+    s.add("github", "alice", "hunter2");
+    for line in ["copy github", "copy github user"] {
+        s.command(line);
+        s.expect("Clipboard unavailable");
+    }
+    s.command("copy github pin");
+    s.expect("Unknown command");
+    s.exit_discarding();
+}
+
+#[test]
 fn mv_renames_an_entry() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());

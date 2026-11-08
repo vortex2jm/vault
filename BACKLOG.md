@@ -47,7 +47,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 - [ ] **E3** Auto-lock after N minutes of inactivity.
 - [x] **E5** Rename an entry (`mv <old> <new>`).
 - [ ] **E6** Quoted arguments, so names can contain spaces (`add "My Bank" joao`).
-- [ ] **E7** `copy <svc> user` to copy the username.
+- [x] **E7** `copy <svc> user` to copy the username.
 - [ ] **E8** `status` (changes since the last commit) and `discard` (drop uncommitted changes without locking).
 - [ ] **E9** `restore` from the `.bkp`.
 - [ ] **E10** Generator options: no symbols, no ambiguous characters, passphrases.

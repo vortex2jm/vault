@@ -91,7 +91,7 @@ vault[locked]>
 | `get` | `<service>` | Show a credential entry (username, password and notes) |
 | `find` | `[term]` | Pick an entry from an interactive list (↑/↓ to move, type to filter), then copy, show, update or remove it, or see its history |
 | `history` | `<service>` | Show an entry's previous passwords, newest first, with the date each was replaced (the last 10 are kept) |
-| `copy` | `<service>` | Copy a password to the clipboard, out of clipboard managers' history; cleared after 30 s or when vault exits |
+| `copy` | `<service> [user]` | Copy a password (or, with `user`, the username) to the clipboard, out of clipboard managers' history; cleared after 30 s or when vault exits |
 | `update` | `<service>` | Update an entry: blank keeps the username or password; a new password sends the old one to the history; the notes come pre-filled to edit |
 | `mv` | `<service> <new>` | Rename an entry (password, notes and history stay) |
 | `rm` | `<service>` | Remove a credential entry |

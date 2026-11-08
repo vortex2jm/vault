@@ -1,3 +1,5 @@
+use crate::domain::models::Entry;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Lock,
@@ -13,7 +15,7 @@ pub enum Command {
     Create(String),
     Remove(String),
     Rename(String),
-    Copy(String),
+    Copy { service: String, field: Field },
     Export(String),
     Import(String),
     Update(String),
@@ -23,6 +25,39 @@ pub enum Command {
     Gen(Option<usize>),
     Add { service: String, username: String },
     Move { from: String, to: String },
+}
+
+/// Which field of an entry `copy` takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Field {
+    Password,
+    Username,
+}
+
+impl Field {
+    /// `copy`'s optional second argument: the password unless it says
+    /// otherwise.
+    fn parse(word: Option<&str>) -> Option<Self> {
+        match word {
+            None | Some("pass" | "password") => Some(Field::Password),
+            Some("user" | "username") => Some(Field::Username),
+            Some(_) => None,
+        }
+    }
+
+    pub fn of(self, entry: &Entry) -> &str {
+        match self {
+            Field::Password => &entry.passwd,
+            Field::Username => &entry.username,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Field::Password => "Password",
+            Field::Username => "Username",
+        }
+    }
 }
 
 /// What a command's first argument refers to, so Tab knows what to offer.
@@ -82,7 +117,10 @@ impl Command {
             },
             "update" => Command::Update(p.next()?.into()),
             "rename" => Command::Rename(p.next()?.into()),
-            "copy"   => Command::Copy(p.next()?.into()),
+            "copy"   => Command::Copy {
+                service: p.next()?.into(),
+                field: Field::parse(p.next())?,
+            },
             "export" => Command::Export(p.next()?.into()),
             "import" => Command::Import(p.next()?.into()),
             "gen"    => Command::Gen(p.next().and_then(|s| s.parse().ok())),

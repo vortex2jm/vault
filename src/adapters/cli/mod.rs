@@ -14,7 +14,7 @@ use crate::{
 };
 
 use clipboard::{CLEAR_AFTER, SecretClipboard, SystemClipboard};
-use commands::Command;
+use commands::{Command, Field};
 use ui::{BLUE, CYAN, GREEN, RED, RESET, VaultHelper, YELLOW};
 
 /// Vault CLI struct, containing the engine and readline editors
@@ -203,11 +203,12 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                 }
             }
 
-            Command::Copy(s) => {
-                let password = Zeroizing::new(self.engine.get(&s)?.passwd.clone());
-                self.copy(&password)?;
+            Command::Copy { service, field } => {
+                let text = Zeroizing::new(field.of(self.engine.get(&service)?).to_string());
+                self.copy(&text)?;
                 println!(
-                    "Password for '{s}' copied to clipboard (cleared in {} s).\n",
+                    "{} for '{service}' copied to clipboard (cleared in {} s).\n",
+                    field.label(),
                     CLEAR_AFTER.as_secs()
                 );
             }
@@ -449,16 +450,8 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             .default(0)
             .interact_opt();
         match chosen(action)? {
-            Some(0) => self.handle_command(Command::Copy(service)),
-            Some(1) => {
-                let username = self.engine.get(&service)?.username.clone();
-                self.copy(&username)?;
-                println!(
-                    "Username for '{service}' copied to clipboard (cleared in {} s).\n",
-                    CLEAR_AFTER.as_secs()
-                );
-                Ok(())
-            }
+            Some(0) => self.handle_command(Command::Copy { service, field: Field::Password }),
+            Some(1) => self.handle_command(Command::Copy { service, field: Field::Username }),
             Some(2) => self.handle_command(Command::Get(service)),
             Some(3) => self.handle_command(Command::History(service)),
             Some(4) => self.handle_command(Command::Update(service)),
@@ -516,7 +509,7 @@ add <svc> <user>     Add entry (asks for its password and optional notes)
 get <svc>            Show entry (user, pass, notes)
 find [term]          Pick an entry from a list (arrows, type to filter)
 history <svc>        Show the previous passwords of an entry
-copy <svc>           Copy password to clipboard (cleared after 30 s)
+copy <svc> [user]    Copy password (or username) to clipboard, cleared after 30 s
 update <svc>         Update username, password or notes of entry
 mv <svc> <new>       Rename an entry
 rm <svc>             Remove entry

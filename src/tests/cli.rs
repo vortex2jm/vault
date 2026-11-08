@@ -7,7 +7,14 @@ use std::fs;
 use rustyline::{Context, completion::Completer, history::DefaultHistory};
 
 use super::support::TempDir;
-use crate::adapters::cli::{commands::Command, expand_path, ui::VaultHelper};
+use crate::{
+    adapters::cli::{
+        commands::{Command, Field},
+        expand_path,
+        ui::VaultHelper,
+    },
+    domain::models::Entry,
+};
 
 #[test]
 fn parses_every_command_with_its_arguments() {
@@ -25,7 +32,10 @@ fn parses_every_command_with_its_arguments() {
         ("find", Command::Find(None)),
         ("find git", Command::Find(Some("git".into()))),
         ("history github", Command::History("github".into())),
-        ("copy github", Command::Copy("github".into())),
+        ("copy github", Command::Copy { service: "github".into(), field: Field::Password }),
+        ("copy github password", Command::Copy { service: "github".into(), field: Field::Password }),
+        ("copy github user", Command::Copy { service: "github".into(), field: Field::Username }),
+        ("copy github username", Command::Copy { service: "github".into(), field: Field::Username }),
         ("update github", Command::Update("github".into())),
         ("rm github", Command::Remove("github".into())),
         ("mv github gh", Command::Move { from: "github".into(), to: "gh".into() }),
@@ -56,17 +66,22 @@ fn extra_whitespace_is_ignored() {
 fn missing_arguments_and_unknown_commands_are_rejected() {
     let inputs = [
         "", "   ", "create", "unlock", "drop", "add", "add github", "get", "copy", "update",
-        "rm", "history", "mv", "mv github", "rename", "export", "import", "frobnicate", "GET github",
+        "rm", "history", "mv", "mv github", "rename", "export", "import", "frobnicate", "GET github", "copy github pin",
     ];
     for input in inputs {
         assert_eq!(Command::parse(input), None, "{input:?}");
     }
 }
 
+/// Whether `name` followed by one or two arguments parses.
+fn parses_with_arguments(name: &str) -> bool {
+    [" x", " x y"].iter().any(|args| Command::parse(&format!("{name}{args}")).is_some())
+}
+
 #[test]
 fn every_completable_name_is_a_command() {
     for name in Command::NAMES {
-        assert!(Command::parse(&format!("{name} a b")).is_some(), "{name}");
+        assert!(Command::parse(name).is_some() || parses_with_arguments(name), "{name}");
     }
 }
 
@@ -76,9 +91,16 @@ fn every_command_that_needs_an_argument_declares_it() {
         let parses_alone = Command::parse(name).is_some();
         match Command::first_argument(name) {
             None => assert!(parses_alone, "{name} takes an argument but doesn't declare it"),
-            Some(_) => assert!(Command::parse(&format!("{name} x y")).is_some(), "{name}"),
+            Some(_) => assert!(parses_with_arguments(name), "{name}"),
         }
     }
+}
+
+#[test]
+fn copy_takes_the_field_it_names() {
+    let entry = Entry::new("github".into(), "alice".into(), "hunter2".into());
+    assert_eq!((Field::Password.of(&entry), Field::Password.label()), ("hunter2", "Password"));
+    assert_eq!((Field::Username.of(&entry), Field::Username.label()), ("alice", "Username"));
 }
 
 /// Completion for `line` with the cursor at its end, given the entry and
