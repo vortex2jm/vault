@@ -43,7 +43,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 ## Essentials
 
 - [x] **E1** Versioned file format: magic, version and Argon2 parameters in a header authenticated as AES-GCM AAD; automatic migration of existing vaults; stronger Argon2 parameters; no 4 MiB limit (B3).
-- [ ] **E2** Clipboard: clear automatically after ~30 s and stay out of clipboard-manager history.
+- [x] **E2** Clipboard: clear automatically after ~30 s and stay out of clipboard-manager history.
 - [ ] **E3** Auto-lock after N minutes of inactivity.
 - [ ] **E5** Rename an entry (`mv <old> <new>`).
 - [ ] **E6** Quoted arguments, so names can contain spaces (`add "My Bank" joao`).

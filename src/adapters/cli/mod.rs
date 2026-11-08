@@ -1,3 +1,4 @@
+pub(crate) mod clipboard;
 pub(crate) mod commands;
 pub(crate) mod ui;
 
@@ -12,6 +13,7 @@ use crate::{
     domain::ports::{CryptoPort, StoragePort},
 };
 
+use clipboard::{CLEAR_AFTER, SecretClipboard, SystemClipboard};
 use commands::Command;
 use ui::{BLUE, CYAN, GREEN, RED, RESET, VaultHelper, YELLOW};
 
@@ -22,6 +24,9 @@ pub struct VaultCli<S: StoragePort, C: CryptoPort> {
     /// Editor for answers (`update`'s username, confirmations, menus): line
     /// editing works, but there is no Tab completion and no history.
     answers: Editor<(), DefaultHistory>,
+    /// Opened on the first copy: without a display there is none to open.
+    /// Dropping it clears a copy still on the clipboard.
+    clipboard: Option<SecretClipboard<SystemClipboard>>,
 }
 
 impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
@@ -32,7 +37,7 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
         rl.set_helper(Some(helper));
         let answers = Editor::<(), DefaultHistory>::new()?;
 
-        Ok(Self { engine, rl, answers })
+        Ok(Self { engine, rl, answers, clipboard: None })
     }
 
     /// Main loop
@@ -194,9 +199,12 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             }
 
             Command::Copy(s) => {
-                let password = self.engine.get(&s)?.passwd.clone();
-                copy_to_clipboard(password)?;
-                println!("Password for '{}' copied to clipboard.\n", s);
+                let password = Zeroizing::new(self.engine.get(&s)?.passwd.clone());
+                self.copy(&password)?;
+                println!(
+                    "Password for '{s}' copied to clipboard (cleared in {} s).\n",
+                    CLEAR_AFTER.as_secs()
+                );
             }
 
             Command::Find(filter) => self.find(filter.unwrap_or_default())?,
@@ -439,8 +447,11 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             Some(0) => self.handle_command(Command::Copy(service)),
             Some(1) => {
                 let username = self.engine.get(&service)?.username.clone();
-                copy_to_clipboard(username)?;
-                println!("Username for '{service}' copied to clipboard.\n");
+                self.copy(&username)?;
+                println!(
+                    "Username for '{service}' copied to clipboard (cleared in {} s).\n",
+                    CLEAR_AFTER.as_secs()
+                );
                 Ok(())
             }
             Some(2) => self.handle_command(Command::Get(service)),
@@ -452,6 +463,21 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                 Ok(())
             }
         }
+    }
+
+    /// Puts `text` on the clipboard, kept out of clipboard managers' history
+    /// and cleared after [`CLEAR_AFTER`] or when the program exits.
+    fn copy(&mut self, text: &str) -> Result<()> {
+        let clipboard = match &self.clipboard {
+            Some(clipboard) => clipboard,
+            None => {
+                let system = SystemClipboard::new()
+                    .map_err(|e| anyhow::anyhow!("Clipboard unavailable: {e}"))?;
+                self.clipboard.insert(SecretClipboard::new(system, Some(CLEAR_AFTER)))
+            }
+        };
+        clipboard.copy(text).map_err(|e| anyhow::anyhow!("Failed to copy: {e}"))?;
+        Ok(())
     }
 
     /// Asks a yes/no question. Anything but `y` (Ctrl-C and Ctrl-D included) means no.
@@ -485,7 +511,7 @@ add <svc> <user>     Add entry (asks for its password and optional notes)
 get <svc>            Show entry (user, pass, notes)
 find [term]          Pick an entry from a list (arrows, type to filter)
 history <svc>        Show the previous passwords of an entry
-copy <svc>           Copy password to clipboard
+copy <svc>           Copy password to clipboard (cleared after 30 s)
 update <svc>         Update username, password or notes of entry
 rm <svc>             Remove entry
 commit               Save changes to disk
@@ -521,16 +547,6 @@ fn local_time(timestamp: i64) -> String {
     chrono::DateTime::from_timestamp(timestamp, 0)
         .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
         .unwrap_or_else(|| "?".to_string())
-}
-
-/// Puts `text` on the clipboard.
-fn copy_to_clipboard(text: String) -> Result<()> {
-    let mut clipboard =
-        arboard::Clipboard::new().map_err(|e| anyhow::anyhow!("Clipboard unavailable: {}", e))?;
-    clipboard
-        .set_text(text)
-        .map_err(|e| anyhow::anyhow!("Failed to copy: {}", e))?;
-    Ok(())
 }
 
 /// Expands a leading `~` to the user's home directory.

@@ -5,6 +5,7 @@
 mod support;
 
 mod cli;
+mod clipboard;
 mod compat;
 mod crypto;
 mod domain;

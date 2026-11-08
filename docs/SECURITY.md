@@ -67,7 +67,7 @@ create/unlock
 - **AES round keys** contain the key itself. A cipher lives for one encrypt or decrypt, and the `aes` crate's `zeroize` feature wipes its round keys when it is dropped.
 - **Known gaps**, in code this project doesn't control:
   - The GHASH key (AES of a zero block under the vault key) is not wiped when a cipher is dropped: `polyval` 0.6 picks its backend at run time and that wrapper never runs the backends' zeroizing `Drop`. It doesn't reveal the key, but together with the vault file it would let someone alter the file without the tag noticing. Getting it takes reading this process's memory.
-  - `rpassword` reads through a buffer it doesn't wipe, `rustyline` keeps the line being edited (the notes prompt) in its own buffer, the clipboard holds a copied password until it is replaced, and the `csv` crate buffers rows during `export` and `import`.
+  - `rpassword` reads through a buffer it doesn't wipe, `rustyline` keeps the line being edited (the notes prompt) in its own buffer, the clipboard holds a copied password for up to 30 s, and the `csv` crate buffers rows during `export` and `import`.
 
 ---
 
@@ -133,7 +133,8 @@ A crash or power loss at any point leaves each file either in its old state or i
 
 | Threat | Status |
 |--------|--------|
-| Keylogger / clipboard snooping | Not mitigated — OS-level threat |
+| Keylogger | Not mitigated — OS-level threat |
+| Clipboard snooping | Partly: a copy is marked as a secret (`x-kde-passwordManagerHint`), which most Linux clipboard managers leave out of their history, and cleared after 30 s or when vault exits, unless something else was copied since. While it is there, any program can read it |
 | Root/kernel-level memory access | Not mitigated — memory zeroization is best-effort in most OS environments |
 | Side-channel attacks (timing, cache) | Not specifically hardened |
 | Swap / hibernation leaking secrets | Not mitigated — use encrypted swap / disable hibernation |

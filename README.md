@@ -12,6 +12,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **Tab-completion** of commands, entry names, vault names and file paths, and **command history** in the interactive shell
 - **Interactive selector** (`find`): browse your entries with the arrow keys and fuzzy search
 - **Notes and password history** on each entry: the last 10 passwords are kept, with the date each one was replaced
+- **Careful clipboard**: `copy` keeps the password out of clipboard managers' history and clears it after 30 s
 - **Crash-safe saves**: every commit writes a new file and atomically swaps it in, keeping the previous version as a backup
 - **Safe across sessions**: open the same vault in two terminals; a commit never overwrites what the other one saved
 - **Strict Security**: Memory zeroization (secrets never linger), no core dumps, no debugging or memory reads by your other programs (Linux), owner-only permissions on Unix (`0700` directory; `0600` vaults, backups and exports), and path traversal protection.
@@ -65,7 +66,7 @@ vault[personal*|1]> commit
 Changes committed.
 
 vault[personal|1]> copy github
-Password for 'github' copied to clipboard.
+Password for 'github' copied to clipboard (cleared in 30 s).
 
 vault[personal|1]> lock
 Vault locked.
@@ -90,7 +91,7 @@ vault[locked]>
 | `get` | `<service>` | Show a credential entry (username, password and notes) |
 | `find` | `[term]` | Pick an entry from an interactive list (↑/↓ to move, type to filter), then copy, show, update or remove it, or see its history |
 | `history` | `<service>` | Show an entry's previous passwords, newest first, with the date each was replaced (the last 10 are kept) |
-| `copy` | `<service>` | Copy a password directly to the OS clipboard |
+| `copy` | `<service>` | Copy a password to the clipboard, out of clipboard managers' history; cleared after 30 s or when vault exits |
 | `update` | `<service>` | Update an entry: blank keeps the username or password; a new password sends the old one to the history; the notes come pre-filled to edit |
 | `rm` | `<service>` | Remove a credential entry |
 | `gen` | `[length]` | Generate a random strong password (8–256 chars, default: 20) |

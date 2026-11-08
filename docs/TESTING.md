@@ -13,6 +13,7 @@ src/tests/                unit and component tests of the crate internals
 ├── storage.rs            FileStorage: files, backups, atomic saves, sessions
 ├── engine.rs             VaultEngine flows with the real adapters, upgrades
 ├── cli.rs                command parser, Tab completion, ~ expansion
+├── clipboard.rs          the clipboard for secrets, on a fake clipboard
 ├── compat.rs             old vault files: opens (and upgrades) the fixtures
 └── known_bugs.rs         open bugs from BACKLOG.md, #[ignore]d
 

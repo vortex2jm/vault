@@ -28,6 +28,7 @@ src/
     ├── process.rs            # no core dumps, no same-user debugging
     └── cli/
         ├── mod.rs            # VaultCli — REPL loop, command dispatch
+        ├── clipboard.rs      # copies out of clipboard history, cleared after 30 s
         ├── commands.rs       # Command enum
         └── ui.rs             # VaultHelper (tab-completion, colors)
 ```
@@ -135,6 +136,7 @@ The outermost layer. Implements the interactive REPL.
 - **`confirm_exit()` / `confirm_lock()`** — when `dirty = true`, prompts the user to commit/discard before proceeding.
 - **`VaultHelper`** — implements `rustyline::Completer`. Only the word under the cursor is replaced, and what is offered depends on its position: command names in the first word; in the first argument, entry names (`get`, `copy`, `update`, `rm`), vault names (`unlock`, `drop`) or file paths (`import`, `export`), as declared by `Command::first_argument`. The CLI hands it the current entry and vault names before each prompt.
 - **`find()`** — the interactive selector: a `dialoguer` `FuzzySelect` over the entry names, then a `Select` with the actions (copy password or username, show, update, remove), which reuse the regular commands. Esc and Ctrl-C cancel.
+- **`SecretClipboard`** (`clipboard.rs`) — what `copy` uses. Each copy is marked as a secret for clipboard managers and gets a timer that clears it 30 s later, if the clipboard still holds it (compared by SHA-256) and no newer copy was made. Dropping it, when the program exits, clears a copy still pending. The system clipboard sits behind a small `Backend` trait, so tests use a fake.
 - Passwords are read with `rpassword` (no echo).
 - Other answers (`update`'s username, y/N confirmations, the commit menus) go through a second `rustyline` editor: arrows and Ctrl-U work, Ctrl-C cancels, and neither Tab completion nor history leak in from the main prompt.
 
