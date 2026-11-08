@@ -19,6 +19,8 @@ fn main() -> anyhow::Result<()> {
     let crypto = AesGcmCrypto::new();
     let engine = VaultEngine::new(storage, crypto);
 
-    let mut cli = VaultCli::new(engine)?;
+    let setting = std::env::var("VAULT_AUTO_LOCK").ok();
+    let auto_lock = adapters::cli::auto_lock(setting.as_deref()).map_err(anyhow::Error::msg)?;
+    let mut cli = VaultCli::new(engine, auto_lock)?;
     cli.run()
 }

@@ -12,6 +12,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **Tab-completion** of commands, entry names, vault names and file paths, and **command history** in the interactive shell
 - **Interactive selector** (`find`): browse your entries with the arrow keys and fuzzy search
 - **Notes and password history** on each entry: the last 10 passwords are kept, with the date each one was replaced
+- **Auto-lock**: an unlocked vault left alone at the prompt for 5 minutes locks itself (with uncommitted changes it only warns)
 - **Careful clipboard**: `copy` keeps the password out of clipboard managers' history and clears it after 30 s
 - **Crash-safe saves**: every commit writes a new file and atomically swaps it in, keeping the previous version as a backup
 - **Safe across sessions**: open the same vault in two terminals; a commit never overwrites what the other one saved
@@ -117,6 +118,20 @@ vault[locked]>                    # vault is locked
 vault[myname|3]>                  # unlocked, 3 entries
 vault[myname*|3]>                 # unlocked, unsaved changes
 ```
+
+---
+
+## Auto-Lock
+
+An unlocked vault left at the prompt for 5 minutes without a command locks itself, wiping the key and the entries from memory. If it has uncommitted changes, it stays open instead and says so once: locking would throw them away, so committing or discarding them is up to you.
+
+Set the time with `VAULT_AUTO_LOCK`, in seconds (`0` turns it off):
+
+```sh
+VAULT_AUTO_LOCK=120 vault    # lock after 2 minutes
+```
+
+The time only runs at the main prompt: in the middle of a command (a password prompt, the `find` list) nothing locks.
 
 ---
 

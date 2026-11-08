@@ -267,6 +267,38 @@ fn mv_renames_an_entry() {
 }
 
 #[test]
+fn an_idle_vault_locks_itself() {
+    let home = TempDir::new();
+    let mut s = Session::start_with(home.path(), &[("VAULT_AUTO_LOCK", "1")]);
+    s.create("personal", "password");
+    s.expect("Vault locked after 1 s without activity.");
+    // The notice shows the prompt again below it, still waiting for the line.
+    s.expect("]> ");
+    s.send(b"ls\r");
+    assert!(s.output().contains("personal"), "ls lists vaults only when locked");
+    assert_eq!(s.command("exit"), "vault[locked]> ");
+    assert!(s.wait().success());
+}
+
+#[test]
+fn an_idle_vault_with_uncommitted_changes_only_warns_once() {
+    let home = TempDir::new();
+    let mut s = Session::start_with(home.path(), &[("VAULT_AUTO_LOCK", "2")]);
+    s.create("personal", "password");
+    s.add("github", "alice", "hunter2");
+    s.expect("2 s without activity, but the vault has uncommitted changes");
+    s.expect("]> ");
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    let warnings = String::from_utf8_lossy(&s.raw()).matches("uncommitted changes:").count();
+    assert_eq!(warnings, 1, "warned again while still waiting");
+
+    s.send(b"get github\r");
+    assert!(s.output().contains("pass: hunter2"));
+    assert_eq!(s.command("ls"), "vault[personal*|1]> ", "still open, changes kept");
+    s.exit_discarding();
+}
+
+#[test]
 fn ls_lists_vaults_when_locked_and_entries_when_unlocked() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());

@@ -9,8 +9,9 @@ use rustyline::{Context, completion::Completer, history::DefaultHistory};
 use super::support::TempDir;
 use crate::{
     adapters::cli::{
+        auto_lock,
         commands::{Command, Field},
-        expand_path,
+        describe, expand_path,
         ui::VaultHelper,
     },
     domain::models::Entry,
@@ -195,4 +196,23 @@ fn expand_path_replaces_a_leading_tilde_only() {
     for unchanged in ["/tmp/out.csv", "out.csv", "~user/out.csv", "a/~/b"] {
         assert_eq!(expand_path(unchanged), unchanged);
     }
+}
+
+#[test]
+fn vault_auto_lock_sets_the_idle_time_in_seconds() {
+    use std::time::Duration;
+    assert_eq!(auto_lock(None), Ok(Some(Duration::from_secs(300))));
+    assert_eq!(auto_lock(Some("90")), Ok(Some(Duration::from_secs(90))));
+    assert_eq!(auto_lock(Some(" 600 ")), Ok(Some(Duration::from_secs(600))));
+    assert_eq!(auto_lock(Some("0")), Ok(None), "0 turns it off");
+    for bad in ["", "5m", "-1", "soon"] {
+        assert!(auto_lock(Some(bad)).is_err(), "{bad:?}");
+    }
+}
+
+#[test]
+fn idle_times_read_in_minutes_when_whole() {
+    use std::time::Duration;
+    let read = |seconds| describe(Duration::from_secs(seconds));
+    assert_eq!((read(300), read(60), read(90), read(1)), ("5 min".into(), "1 min".into(), "90 s".into(), "1 s".into()));
 }

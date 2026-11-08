@@ -123,6 +123,7 @@ A crash or power loss at any point leaves each file either in its old state or i
 | Ciphertext tampering | AES-GCM authentication tag — decryption fails on any modification |
 | Header tampering (cost, salt, version) | The header is AES-GCM associated data; costs from a file are bounded before any key is derived |
 | Core dumps, and other programs of the same user reading memory | No core dumps (`RLIMIT_CORE` = 0 on Unix). On Linux the process is non-dumpable (`PR_SET_DUMPABLE` = 0): a debugger can't attach and `/proc/<pid>/mem` can't be read without root |
+| An unlocked vault left unattended | Locks itself after 5 minutes at the prompt (`VAULT_AUTO_LOCK`), wiping the key and the entries; with uncommitted changes it only warns, since locking would throw them away |
 | Secrets lingering in RAM after lock | `ZeroizeOnDrop` on the key and on entries, `Zeroizing` for typed secrets, Argon2 memory and AES round keys wiped (see Key Material Handling for the gaps) |
 | Vault file corruption on crash | Atomic replace: temporary file + `fsync` + `rename` + directory `fsync` |
 | Lost updates between sessions | A commit is refused if another session saved since this one loaded the vault |

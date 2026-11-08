@@ -30,6 +30,7 @@ src/
         ├── mod.rs            # VaultCli — REPL loop, command dispatch
         ├── clipboard.rs      # copies out of clipboard history, cleared after 30 s
         ├── commands.rs       # Command enum
+        ├── input.rs          # the main prompt, on its own thread (auto-lock)
         └── ui.rs             # VaultHelper (tab-completion, colors)
 ```
 
@@ -80,6 +81,7 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 | `create_vault(name, pw)` | Checks the name and the password's length, generates salt, derives key, commits empty state to disk |
 | `unlock(name, pw)` | Loads file, derives key, decrypts entries into memory; rewrites an old-format or cheaper-keyed file at once and reports it as `Upgrade` |
 | `lock()` | Drops the entries (which wipes them), clears vault state, resets the key |
+| `lock_if_clean()` | `lock()`, unless there are uncommitted changes (auto-lock); returns whether it locked |
 | `commit()` | Encrypts current entries, saves to disk with fresh nonce |
 | `add(svc, user, pw)` | Inserts a new `Entry`, marks dirty |
 | `delete(svc)` | Removes entry (marks dirty only on success) |
@@ -134,6 +136,7 @@ The outermost layer. Implements the interactive REPL.
 
 - **`VaultCli<S, C>`** wraps the engine and a `rustyline::Editor` for line editing.
 - **`run()`** — main loop: refreshes the completion names → reads input → parses command (`Command::parse`) → dispatches to `handle_command`.
+- **Auto-lock** — the main prompt is read on its own thread (`input.rs`), so the main thread, which owns the engine, can wait for the line with a timeout. When `VAULT_AUTO_LOCK` (300 s by default) passes at the prompt, it calls `lock_if_clean()`: the vault locks, or, with uncommitted changes, stays open with a one-time warning. Everything else that reads the terminal runs on the main thread while the prompt thread waits for its next request. The notice is written directly (rustyline's external printer stalls on input arriving in bursts in 17.0.2).
 - **`confirm_exit()` / `confirm_lock()`** — when `dirty = true`, prompts the user to commit/discard before proceeding.
 - **`VaultHelper`** — implements `rustyline::Completer`. Only the word under the cursor is replaced, and what is offered depends on its position: command names in the first word; in the first argument, entry names (`get`, `copy`, `update`, `rm`), vault names (`unlock`, `drop`) or file paths (`import`, `export`), as declared by `Command::first_argument`. The CLI hands it the current entry and vault names before each prompt.
 - **`find()`** — the interactive selector: a `dialoguer` `FuzzySelect` over the entry names, then a `Select` with the actions (copy password or username, show, update, remove), which reuse the regular commands. Esc and Ctrl-C cancel.

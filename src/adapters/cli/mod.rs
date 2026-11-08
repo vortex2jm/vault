@@ -1,11 +1,15 @@
 pub(crate) mod clipboard;
 pub(crate) mod commands;
+mod input;
 pub(crate) mod ui;
 
 use anyhow::Result;
 use dialoguer::{FuzzySelect, Select, theme::ColorfulTheme};
 use rustyline::{Editor, error::ReadlineError, history::DefaultHistory};
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    time::Duration,
+};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -15,12 +19,17 @@ use crate::{
 
 use clipboard::{CLEAR_AFTER, SecretClipboard, SystemClipboard};
 use commands::{Command, Field};
+use input::Input;
 use ui::{BLUE, CYAN, GREEN, RED, RESET, VaultHelper, YELLOW};
 
 /// Vault CLI struct, containing the engine and readline editors
 pub struct VaultCli<S: StoragePort, C: CryptoPort> {
     engine: VaultEngine<S, C>,
-    rl: Editor<VaultHelper, DefaultHistory>,
+    /// The main prompt, read on its own thread.
+    input: Input,
+    /// Time at the main prompt without a command before an unlocked vault
+    /// locks itself; `None`: never.
+    auto_lock: Option<Duration>,
     /// Editor for answers (`update`'s username, confirmations, menus): line
     /// editing works, but there is no Tab completion and no history.
     answers: Editor<(), DefaultHistory>,
@@ -30,14 +39,15 @@ pub struct VaultCli<S: StoragePort, C: CryptoPort> {
 }
 
 impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
-    pub fn new(engine: VaultEngine<S, C>) -> Result<Self> {
+    pub fn new(engine: VaultEngine<S, C>, auto_lock: Option<Duration>) -> Result<Self> {
         let helper = VaultHelper::new(Command::NAMES.to_vec());
 
         let mut rl = Editor::<VaultHelper, DefaultHistory>::new()?;
         rl.set_helper(Some(helper));
+        let input = Input::new(rl);
         let answers = Editor::<(), DefaultHistory>::new()?;
 
-        Ok(Self { engine, rl, answers, clipboard: None })
+        Ok(Self { engine, input, auto_lock, answers, clipboard: None })
     }
 
     /// Main loop
@@ -45,12 +55,8 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
         println!("--- Vault CLI ---\n");
 
         loop {
-            self.refresh_completion();
-            let line = match self.rl.readline(&self.prompt()) {
-                Ok(l) => {
-                    self.rl.add_history_entry(l.as_str())?;
-                    l
-                }
+            let line = match self.next_line()? {
+                Ok(l) => l,
                 Err(ReadlineError::Interrupted) => continue,
                 Err(ReadlineError::Eof) => {
                     if self.confirm_exit()? {
@@ -404,11 +410,29 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
     }
 
     /// Hands Tab completion the current entry and vault names.
-    fn refresh_completion(&mut self) {
+    /// Shows the prompt and returns the line typed at it. While nobody types,
+    /// an unlocked vault locks itself after `auto_lock`; with uncommitted
+    /// changes it stays open instead, and a warning says so once.
+    fn next_line(&mut self) -> Result<Result<String, ReadlineError>> {
         let entries = self.engine.get_entries().unwrap_or_default();
         let vaults = self.engine.get_vaults().unwrap_or_default();
-        if let Some(helper) = self.rl.helper_mut() {
-            helper.set_names(entries, vaults);
+        self.input.ask(self.prompt(), entries, vaults);
+
+        let mut timeout = self.auto_lock.filter(|_| !self.engine.is_locked());
+        loop {
+            if let Some(line) = self.input.wait(timeout)? {
+                return Ok(line);
+            }
+            let idle = describe(timeout.unwrap_or_default());
+            timeout = None; // once per wait
+            match self.engine.lock_if_clean() {
+                Ok(true) => self.input.print(&format!("Vault locked after {idle} without activity.")),
+                Ok(false) => self.input.print(&format!(
+                    "{YELLOW}{idle} without activity, but the vault has uncommitted changes:{RESET} \
+                     it stays open. Commit or discard them."
+                )),
+                Err(_) => {}
+            }
         }
     }
 
@@ -557,4 +581,25 @@ pub(crate) fn expand_path(path: &str) -> String {
         }
     }
     path.to_string()
+}
+
+/// How long an unlocked vault waits at the prompt before locking itself:
+/// `VAULT_AUTO_LOCK` seconds, 5 minutes if unset, never if 0.
+pub fn auto_lock(setting: Option<&str>) -> Result<Option<Duration>, String> {
+    let Some(setting) = setting else {
+        return Ok(Some(Duration::from_secs(5 * 60)));
+    };
+    match setting.trim().parse::<u64>() {
+        Ok(0) => Ok(None),
+        Ok(seconds) => Ok(Some(Duration::from_secs(seconds))),
+        Err(_) => Err(format!("VAULT_AUTO_LOCK must be a number of seconds, not {setting:?}")),
+    }
+}
+
+/// `5 min`, or `90 s` when it isn't whole minutes.
+pub(crate) fn describe(duration: Duration) -> String {
+    match duration.as_secs() {
+        s if s % 60 == 0 => format!("{} min", s / 60),
+        s => format!("{s} s"),
+    }
 }

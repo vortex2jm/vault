@@ -673,6 +673,21 @@ fn add_refuses_service_names_commands_cannot_reach() {
 }
 
 #[test]
+fn lock_if_clean_never_throws_changes_away() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "personal", "password");
+    engine.add("github", "alice", "hunter2").unwrap();
+    assert!(!engine.lock_if_clean().unwrap(), "locked with uncommitted changes");
+    assert!(!engine.is_locked());
+    assert_eq!(engine.get("github").unwrap().passwd, "hunter2");
+
+    engine.commit().unwrap();
+    assert!(engine.lock_if_clean().unwrap());
+    assert!(engine.is_locked());
+    assert!(matches!(engine.lock_if_clean(), Err(VaultError::Locked)));
+}
+
+#[test]
 fn mv_renames_an_entry_and_keeps_the_rest() {
     let dir = TempDir::new();
     let mut engine = created(&dir, "personal", "password");

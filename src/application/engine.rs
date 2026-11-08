@@ -293,6 +293,19 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
     }
 
     /// Locks vault, clearing all entries from memory and zeroizing them
+    /// Locks the vault unless it has uncommitted changes, which locking would
+    /// throw away. Returns whether it locked.
+    pub fn lock_if_clean(&mut self) -> Result<bool, VaultError> {
+        if self.is_locked() {
+            return Err(VaultError::Locked);
+        }
+        if self.dirty {
+            return Ok(false);
+        }
+        self.lock()?;
+        Ok(true)
+    }
+
     pub fn lock(&mut self) -> Result<(), VaultError> {
         if self.is_locked() {
             return Err(VaultError::Locked);

@@ -89,9 +89,17 @@ pub struct Session {
 impl Session {
     /// Starts `vault` with `home` as `$HOME`.
     pub fn start(home: &Path) -> Self {
+        Self::start_with(home, &[])
+    }
+
+    /// Starts `vault` with `home` as `$HOME` and the extra variables `env`.
+    pub fn start_with(home: &Path, env: &[(&str, &str)]) -> Self {
         let (master, slave) = open_pty();
         let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
         command
+            // The default (5 minutes) unless a test sets it.
+            .env_remove("VAULT_AUTO_LOCK")
+            .envs(env.iter().copied())
             .env("HOME", home)
             .env("TERM", "xterm-256color")
             // No display: a test must never touch the real clipboard.
