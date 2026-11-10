@@ -23,6 +23,17 @@ pub const MAX_GENERATED_LENGTH: usize = 256;
 /// characters. Vaults whose password predates the rule still unlock.
 pub const MIN_MASTER_PASSWORD_LENGTH: usize = 8;
 
+/// One difference between the open vault and its last commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Change {
+    Added(String),
+    Removed(String),
+    Renamed { from: String, to: String },
+    /// The fields that changed: `username`, `password` (or only `password
+    /// history`, when it was changed and changed back) and `notes`.
+    Changed { service: String, fields: Vec<&'static str> },
+}
+
 /// What `unlock` did to the vault file besides opening it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Upgrade {
@@ -42,7 +53,9 @@ pub struct VaultEngine<S: StoragePort, C: CryptoPort> {
     crypto: C,
     vault_state: Option<VaultState>,
     entries: BTreeMap<String, Entry>,
-    dirty: bool,
+    /// The entries as last committed or loaded: what `changes` compares the
+    /// current ones with, and what `discard` goes back to.
+    committed: BTreeMap<String, Entry>,
     /// Key derivation cost for new vaults, password changes and upgrades.
     kdf: KdfParams,
 }
@@ -60,7 +73,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             crypto,
             vault_state: None,
             entries: BTreeMap::new(),
-            dirty: false,
+            committed: BTreeMap::new(),
             kdf,
         }
     }
@@ -107,9 +120,59 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         self.storage.get_path()
     }
 
-    /// Checks if vault has unsaved changes
+    /// Whether the open vault differs from its last commit. Edits that undo
+    /// each other (`add`, then `rm`) leave it clean.
     pub fn is_dirty(&self) -> bool {
-        self.dirty
+        self.changes().is_ok_and(|changes| !changes.is_empty())
+    }
+
+    /// What changed since the last commit: entries removed, renamed or
+    /// changed (in the order of their old names), then entries added.
+    pub fn changes(&self) -> Result<Vec<Change>, VaultError> {
+        if self.is_locked() {
+            return Err(VaultError::Locked);
+        }
+        let mut added: Vec<&Entry> = self
+            .entries
+            .values()
+            .filter(|entry| !self.committed.contains_key(&entry.service))
+            .collect();
+        let mut changes = Vec::new();
+        for (service, before) in &self.committed {
+            match self.entries.get(service) {
+                Some(now) => {
+                    let fields = changed_fields(before, now);
+                    if !fields.is_empty() {
+                        changes.push(Change::Changed { service: service.clone(), fields });
+                    }
+                }
+                // An entry back under another name, unchanged otherwise (`mv`).
+                None => match added.iter().position(|now| changed_fields(before, now).is_empty()) {
+                    Some(i) => {
+                        let now = added.remove(i);
+                        changes.push(Change::Renamed { from: service.clone(), to: now.service.clone() });
+                    }
+                    None => changes.push(Change::Removed(service.clone())),
+                },
+            }
+        }
+        changes.extend(added.into_iter().map(|entry| Change::Added(entry.service.clone())));
+        Ok(changes)
+    }
+
+    /// Whether any entry, current or as last committed, is still in memory.
+    #[cfg(test)]
+    pub fn holds_entries(&self) -> bool {
+        !self.entries.is_empty() || !self.committed.is_empty()
+    }
+
+    /// Goes back to the last commit. The entries dropped wipe themselves.
+    pub fn discard(&mut self) -> Result<(), VaultError> {
+        if self.is_locked() {
+            return Err(VaultError::Locked);
+        }
+        self.entries = self.committed.clone();
+        Ok(())
     }
 
     /// Creates new vault with given name and password, initializing vault state and deriving key from password and salt.
@@ -182,7 +245,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
                 other => other.into(),
             })?;
 
-        self.dirty = false;
+        self.committed = self.entries.clone();
         Ok(())
     }
 
@@ -234,6 +297,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         });
         plaintext.zeroize();
         self.entries = entries_result?;
+        self.committed = self.entries.clone();
 
         // Only set vault_state after every authentication step has succeeded.
         // This keeps is_locked() accurate throughout the entire unlock flow.
@@ -299,7 +363,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         if self.is_locked() {
             return Err(VaultError::Locked);
         }
-        if self.dirty {
+        if self.is_dirty() {
             return Ok(false);
         }
         self.lock()?;
@@ -313,6 +377,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
 
         // Entries wipe themselves when dropped.
         self.entries.clear();
+        self.committed.clear();
         self.vault_state = None;
         // Reset the derived key so it doesn't linger in memory after locking.
         self.crypto.reset();
@@ -334,7 +399,6 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
 
         let entry = Entry::new(service.into(), username.into(), password.into());
         self.entries.insert(service.into(), entry);
-        self.dirty = true;
 
         Ok(())
     }
@@ -345,7 +409,6 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             return Err(VaultError::Locked);
         }
         let entry = self.entries.remove(service).ok_or(VaultError::EntryNotFound)?;
-        self.dirty = true;
         Ok(entry)
     }
 
@@ -385,7 +448,6 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             notes.zeroize();
         } else {
             entry.set_notes(notes);
-            self.dirty = true;
         }
         Ok(())
     }
@@ -406,7 +468,6 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             .get_mut(service)
             .ok_or(VaultError::EntryNotFound)?;
         entry.update(username, passwd);
-        self.dirty = true;
         Ok(())
     }
 
@@ -528,9 +589,6 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         for entry in read.drain(..) {
             self.entries.insert(entry.service.clone(), entry);
         }
-        if count > 0 {
-            self.dirty = true;
-        }
         Ok(count)
     }
 
@@ -555,7 +613,6 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         let mut entry = self.entries.remove(old).ok_or(VaultError::EntryNotFound)?;
         entry.rename(new.to_string());
         self.entries.insert(new.to_string(), entry);
-        self.dirty = true;
         Ok(())
     }
 
@@ -662,4 +719,22 @@ fn csv_error(e: csv::Error) -> VaultError {
         csv::ErrorKind::Utf8 { .. } => VaultError::Import(format!("line {line} isn't valid UTF-8")),
         _ => VaultError::Serialization,
     }
+}
+
+/// The fields of an entry that differ between `before` and `now`, its name
+/// and dates aside.
+fn changed_fields(before: &Entry, now: &Entry) -> Vec<&'static str> {
+    let mut fields = Vec::new();
+    if before.username != now.username {
+        fields.push("username");
+    }
+    if before.passwd != now.passwd {
+        fields.push("password");
+    } else if before.history != now.history {
+        fields.push("password history");
+    }
+    if before.notes != now.notes {
+        fields.push("notes");
+    }
+    fields
 }

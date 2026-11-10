@@ -117,7 +117,7 @@ fn arrow_keys_work_in_confirmations() {
     s.expect("Remove 'github'? (y/N): ");
     s.send(&[b"y".as_slice(), LEFT, b"\r"].concat());
     s.expect("Entry 'github' removed.");
-    s.exit_discarding();
+    s.exit(); // added, then removed: nothing to commit
 }
 
 #[test]

@@ -13,7 +13,7 @@ use std::{
 use zeroize::Zeroizing;
 
 use crate::{
-    application::engine::{Upgrade, VaultEngine},
+    application::engine::{Change, Upgrade, VaultEngine},
     domain::ports::{CryptoPort, StoragePort},
 };
 
@@ -171,6 +171,37 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
             Command::Move { from, to } => {
                 self.engine.rename_entry(&from, &to)?;
                 println!("Entry '{from}' renamed to '{to}'.\n");
+            }
+
+            Command::Status => {
+                let changes = self.engine.changes()?;
+                if changes.is_empty() {
+                    println!("No uncommitted changes.\n");
+                    return Ok(());
+                }
+                for change in &changes {
+                    match change {
+                        Change::Added(s) => println!("  {GREEN}added{RESET}    {s}"),
+                        Change::Removed(s) => println!("  {RED}removed{RESET}  {s}"),
+                        Change::Renamed { from, to } => println!("  {CYAN}renamed{RESET}  {from} → {to}"),
+                        Change::Changed { service, fields } => {
+                            println!("  {YELLOW}changed{RESET}  {service} ({})", fields.join(", "))
+                        }
+                    }
+                }
+                println!("\n{}: 'commit' saves, 'discard' drops.\n", uncommitted(changes.len()));
+            }
+
+            Command::Discard => {
+                let count = self.engine.changes()?.len();
+                if count == 0 {
+                    println!("Nothing to discard.\n");
+                } else if self.confirm(&format!("Discard {}?", uncommitted(count))) {
+                    self.engine.discard()?;
+                    println!("Changes discarded.\n");
+                } else {
+                    println!("Aborted.\n");
+                }
             }
 
             Command::Commit => {
@@ -538,6 +569,8 @@ update <svc>         Update username, password or notes of entry
 mv <svc> <new>       Rename an entry
 rm <svc>             Remove entry
 commit               Save changes to disk
+status               Show what changed since the last commit
+discard              Drop the uncommitted changes (asks first)
 rename <new>         Rename current vault
 gen [length]         Generate random password (8-256 chars, default: 20)
 info                 Show vault info
@@ -601,5 +634,13 @@ pub(crate) fn describe(duration: Duration) -> String {
     match duration.as_secs() {
         s if s % 60 == 0 => format!("{} min", s / 60),
         s => format!("{s} s"),
+    }
+}
+
+/// `1 uncommitted change`, `3 uncommitted changes`.
+fn uncommitted(count: usize) -> String {
+    match count {
+        1 => "1 uncommitted change".to_string(),
+        n => format!("{n} uncommitted changes"),
     }
 }

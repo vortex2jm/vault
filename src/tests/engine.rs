@@ -6,7 +6,8 @@ use super::support::{CHEAP, Engine, TempDir, created, engine, engine_with_kdf, p
 use crate::{
     adapters::{aes_crypto::AesGcmCrypto, file_storage::FileStorage},
     application::engine::{
-        MAX_GENERATED_LENGTH, MIN_GENERATED_LENGTH, MIN_MASTER_PASSWORD_LENGTH, Upgrade, VaultEngine,
+        Change, MAX_GENERATED_LENGTH, MIN_GENERATED_LENGTH, MIN_MASTER_PASSWORD_LENGTH, Upgrade,
+        VaultEngine,
     },
     domain::{
         errors::{StorageError, VaultError},
@@ -670,6 +671,104 @@ fn add_refuses_service_names_commands_cannot_reach() {
         );
     }
     assert!(engine.get_entries().unwrap().is_empty());
+}
+
+/// A committed vault with bank, github and wifi.
+fn committed_three(dir: &TempDir) -> Engine {
+    let mut engine = created(dir, "personal", "password");
+    engine.add("bank", "bob", "0099").unwrap();
+    engine.add("github", "alice", "hunter2").unwrap();
+    engine.add("wifi", "home", "pass").unwrap();
+    engine.commit().unwrap();
+    engine
+}
+
+#[test]
+fn changes_lists_what_differs_from_the_last_commit() {
+    let dir = TempDir::new();
+    let mut engine = committed_three(&dir);
+    assert!(engine.changes().unwrap().is_empty());
+    assert!(!engine.is_dirty());
+
+    engine.update("bank", Some("carol".into()), Some("0100".into())).unwrap();
+    engine.set_notes("bank", "agência 0001".into()).unwrap();
+    engine.rename_entry("github", "gh").unwrap();
+    engine.delete("wifi").unwrap();
+    engine.add("gitlab", "alice", "tanuki").unwrap();
+    assert_eq!(
+        engine.changes().unwrap(),
+        [
+            Change::Changed { service: "bank".into(), fields: vec!["username", "password", "notes"] },
+            Change::Renamed { from: "github".into(), to: "gh".into() },
+            Change::Removed("wifi".into()),
+            Change::Added("gitlab".into()),
+        ]
+    );
+    assert!(engine.is_dirty());
+}
+
+#[test]
+fn edits_that_undo_each_other_leave_no_change() {
+    let dir = TempDir::new();
+    let mut engine = committed_three(&dir);
+    engine.add("gitlab", "alice", "tanuki").unwrap();
+    engine.delete("gitlab").unwrap();
+    engine.update("wifi", None, None).unwrap(); // blank answers: nothing changes
+    engine.rename_entry("bank", "b").unwrap();
+    engine.rename_entry("b", "bank").unwrap();
+    assert!(engine.changes().unwrap().is_empty());
+    assert!(!engine.is_dirty());
+
+    // A password changed and changed back still leaves a trace: the history.
+    engine.update("github", None, Some("other".into())).unwrap();
+    engine.update("github", None, Some("hunter2".into())).unwrap();
+    assert_eq!(
+        engine.changes().unwrap(),
+        [Change::Changed { service: "github".into(), fields: vec!["password history"] }]
+    );
+}
+
+#[test]
+fn discard_goes_back_to_the_last_commit() {
+    let dir = TempDir::new();
+    let mut engine = committed_three(&dir);
+    engine.update("github", None, Some("new".into())).unwrap();
+    engine.delete("bank").unwrap();
+    engine.add("gitlab", "alice", "tanuki").unwrap();
+
+    engine.discard().unwrap();
+    assert!(!engine.is_dirty());
+    assert_eq!(engine.get_entries().unwrap(), ["bank", "github", "wifi"]);
+    let github = engine.get("github").unwrap();
+    assert_eq!((github.passwd.as_str(), github.history.len()), ("hunter2", 0));
+    assert!(!engine.is_locked(), "discard keeps the vault open");
+
+    engine.lock().unwrap();
+    assert!(matches!(engine.discard(), Err(VaultError::Locked)));
+    assert!(matches!(engine.changes(), Err(VaultError::Locked)));
+}
+
+#[test]
+fn lock_drops_every_copy_of_the_entries() {
+    // Including the copy of the last commit that status and discard use.
+    let dir = TempDir::new();
+    let mut engine = committed_three(&dir);
+    engine.add("gitlab", "alice", "tanuki").unwrap();
+    assert!(engine.holds_entries());
+    engine.lock().unwrap();
+    assert!(!engine.holds_entries());
+}
+
+#[test]
+fn a_vault_locked_without_committing_reopens_with_no_changes() {
+    let dir = TempDir::new();
+    let mut engine = committed_three(&dir);
+    engine.add("gitlab", "alice", "tanuki").unwrap();
+    engine.lock().unwrap(); // the change is dropped
+    engine.unlock("personal", "password").unwrap();
+    assert_eq!(engine.get_entries().unwrap(), ["bank", "github", "wifi"]);
+    assert!(!engine.is_dirty(), "the prompt would show changes that don't exist");
+    assert!(engine.changes().unwrap().is_empty());
 }
 
 #[test]

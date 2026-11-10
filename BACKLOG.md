@@ -48,7 +48,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 - [x] **E5** Rename an entry (`mv <old> <new>`).
 - [ ] **E6** Quoted arguments, so names can contain spaces (`add "My Bank" joao`).
 - [x] **E7** `copy <svc> user` to copy the username.
-- [ ] **E8** `status` (changes since the last commit) and `discard` (drop uncommitted changes without locking).
+- [x] **E8** `status` (changes since the last commit) and `discard` (drop uncommitted changes without locking).
 - [ ] **E9** `restore` from the `.bkp`.
 - [ ] **E10** Generator options: no symbols, no ambiguous characters, passphrases.
 - [x] **E11** Disable core dumps and same-user ptrace (`prctl(PR_SET_DUMPABLE, 0)`).

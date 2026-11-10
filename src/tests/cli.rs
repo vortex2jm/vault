@@ -43,6 +43,8 @@ fn parses_every_command_with_its_arguments() {
         ("gen", Command::Gen(None)),
         ("gen 32", Command::Gen(Some(32))),
         ("commit", Command::Commit),
+        ("status", Command::Status),
+        ("discard", Command::Discard),
         ("rename work", Command::Rename("work".into())),
         ("ls", Command::List),
         ("list", Command::List),

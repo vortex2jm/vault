@@ -99,6 +99,8 @@ vault[locked]>
 | `gen` | `[length]` | Generate a random strong password (8–256 chars, default: 20) |
 | **Data & I/O** |
 | `commit` | — | Save changes to disk |
+| `status` | — | Show what changed since the last commit (added, removed, renamed, changed fields) |
+| `discard` | — | Drop the uncommitted changes, keeping the vault open (asks first) |
 | `rename` | `<new_name>`| Rename the current vault file |
 | `ls`/`list`| — | List vaults (when locked) or entries (when unlocked) |
 | `info` | — | Show the vault name, entry count and key strength |

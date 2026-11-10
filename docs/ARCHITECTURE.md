@@ -82,7 +82,9 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 | `unlock(name, pw)` | Loads file, derives key, decrypts entries into memory; rewrites an old-format or cheaper-keyed file at once and reports it as `Upgrade` |
 | `lock()` | Drops the entries (which wipes them), clears vault state, resets the key |
 | `lock_if_clean()` | `lock()`, unless there are uncommitted changes (auto-lock); returns whether it locked |
-| `commit()` | Encrypts current entries, saves to disk with fresh nonce |
+| `commit()` | Encrypts current entries, saves to disk with fresh nonce; they become the new last commit |
+| `changes()` | What differs from the last commit: entries added, removed, renamed, or changed (which fields). `is_dirty()` is whether there are any, so edits that undo each other leave the vault clean |
+| `discard()` | Goes back to the last commit, keeping the vault open |
 | `add(svc, user, pw)` | Inserts a new `Entry`, marks dirty |
 | `delete(svc)` | Removes entry (marks dirty only on success) |
 | `rename_entry(old, new)` | Renames an entry, keeping its password, notes, history and creation date |

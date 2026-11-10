@@ -160,7 +160,8 @@ fn rm_asks_for_confirmation() {
     s.expect("Entry 'github' removed.");
     s.command("ls");
     assert!(s.output().contains("(no entries)"));
-    s.exit_discarding();
+    // Added, then removed: nothing left to commit, so exit asks nothing.
+    s.exit();
 }
 
 #[test]
@@ -249,6 +250,38 @@ fn copy_takes_an_optional_field() {
     s.command("copy github pin");
     s.expect("Unknown command");
     s.exit_discarding();
+}
+
+#[test]
+fn status_shows_the_changes_and_discard_drops_them() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "password");
+    s.command("status");
+    s.expect("No uncommitted changes.");
+    s.add("github", "alice", "hunter2");
+    s.add("bank", "bob", "0099");
+    s.command("commit");
+    s.expect("Changes committed.");
+
+    s.command("mv github gh");
+    s.command("rm bank");
+    s.answer("Remove 'bank'? (y/N): ", "y");
+    s.command("status");
+    let out = s.output();
+    for line in ["removed  bank", "renamed  github → gh", "2 uncommitted changes"] {
+        assert!(out.contains(line), "{line:?} in {out}");
+    }
+
+    s.command("discard");
+    s.answer("Discard 2 uncommitted changes? (y/N): ", "y");
+    s.expect("Changes discarded.");
+    assert_eq!(s.command("ls"), "vault[personal|2]> ", "still open, back to the commit");
+    let out = s.output();
+    assert!(out.contains("bank") && out.contains("github"), "{out}");
+    s.command("discard");
+    s.expect("Nothing to discard.");
+    s.exit();
 }
 
 #[test]
