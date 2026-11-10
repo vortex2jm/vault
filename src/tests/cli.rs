@@ -45,6 +45,7 @@ fn parses_every_command_with_its_arguments() {
         ("commit", Command::Commit),
         ("status", Command::Status),
         ("discard", Command::Discard),
+        ("restore", Command::Restore),
         ("rename work", Command::Rename("work".into())),
         ("ls", Command::List),
         ("list", Command::List),

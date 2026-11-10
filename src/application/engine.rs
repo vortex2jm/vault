@@ -166,6 +166,44 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         !self.entries.is_empty() || !self.committed.is_empty()
     }
 
+    /// Puts the backup (the version the last commit replaced) in place of the
+    /// open entries, as uncommitted changes: `changes` shows what that
+    /// undoes, `commit` keeps it, `discard` goes back. Returns how many
+    /// changes it makes.
+    ///
+    /// Takes the master password: the backup may be keyed differently, as
+    /// after an upgrade from an older format, when it is the old file.
+    pub fn restore_backup(&mut self, password: &str) -> Result<usize, VaultError> {
+        let current = self.vault_state.ok_or(VaultError::Locked)?;
+        if self.is_dirty() {
+            return Err(VaultError::UncommittedChanges);
+        }
+        if !self.crypto.verify_password(password, &current.salt, &current.kdf) {
+            return Err(VaultError::InvalidPassword);
+        }
+        let bytes = self.storage.load_backup()?.ok_or(VaultError::NoBackup)?;
+        let file = VaultFile::decode(&bytes).map_err(|e| match e {
+            FormatError::UnsupportedVersion(version) => VaultError::UnsupportedFormat(version),
+            _ => VaultError::Corrupted,
+        })?;
+
+        let same_key = file.salt == current.salt && file.kdf == current.kdf;
+        if !same_key {
+            self.crypto.init(password, &file.salt, &file.kdf)?;
+        }
+        let decrypted = self.crypto.decrypt(&file.cipher, &file.nonce, &file.associated_data());
+        if !same_key {
+            // Back to the vault's own key, whatever the backup did.
+            self.crypto.init(password, &current.salt, &current.kdf)?;
+        }
+        let mut plaintext = decrypted.map_err(|_| VaultError::BackupUnreadable)?;
+        let entries = format::decode_entries(&plaintext, file.version)
+            .map_err(|_| VaultError::BackupUnreadable);
+        plaintext.zeroize();
+        self.entries = entries?;
+        Ok(self.changes()?.len())
+    }
+
     /// Goes back to the last commit. The entries dropped wipe themselves.
     pub fn discard(&mut self) -> Result<(), VaultError> {
         if self.is_locked() {

@@ -10,6 +10,7 @@ pub enum Command {
     Commit,
     Status,
     Discard,
+    Restore,
     Clear,
     Passwd,
     Get(String),
@@ -90,7 +91,7 @@ impl Command {
 
     /// Every command name, as offered by Tab completion.
     pub const NAMES: &'static [&'static str] = &[
-        "create", "unlock", "lock", "add", "get", "find", "history", "rm", "mv", "commit", "status", "discard", "ls", "list",
+        "create", "unlock", "lock", "add", "get", "find", "history", "rm", "mv", "commit", "status", "discard", "restore", "ls", "list",
         "update", "rename", "copy", "gen", "info", "export", "import",
         "drop", "passwd",
         "help", "exit", "clear",
@@ -129,6 +130,7 @@ impl Command {
             "commit" => Command::Commit,
             "status" => Command::Status,
             "discard" => Command::Discard,
+            "restore" => Command::Restore,
             "ls" | "list" => Command::List,
             "lock"   => Command::Lock,
             "info"   => Command::Info,

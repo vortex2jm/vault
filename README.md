@@ -101,6 +101,7 @@ vault[locked]>
 | `commit` | — | Save changes to disk |
 | `status` | — | Show what changed since the last commit (added, removed, renamed, changed fields) |
 | `discard` | — | Drop the uncommitted changes, keeping the vault open (asks first) |
+| `restore` | — | Load the backup (the version the last commit replaced) as uncommitted changes: `status` to review, `commit` to keep, `discard` to undo |
 | `rename` | `<new_name>`| Rename the current vault file |
 | `ls`/`list`| — | List vaults (when locked) or entries (when unlocked) |
 | `info` | — | Show the vault name, entry count and key strength |
@@ -145,7 +146,7 @@ All vault files are stored in `~/.vault/`. On Unix the directory is `0700` and e
 ~/.vault/
 ├── .lock              # taken during each commit, so sessions never write at once
 ├── personal.vault     # encrypted vault
-├── personal.bkp       # previous version, kept by each commit
+├── personal.bkp       # previous version, kept by each commit (`restore` loads it)
 └── work.vault
 ```
 

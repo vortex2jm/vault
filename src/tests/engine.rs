@@ -62,6 +62,9 @@ impl StoragePort for FailingSaves {
             }
         }
     }
+    fn load_backup(&self) -> Result<Option<Vec<u8>>, StorageError> {
+        self.inner.load_backup()
+    }
     fn list_vaults(&self) -> Result<Vec<String>, StorageError> {
         self.inner.list_vaults()
     }
@@ -746,6 +749,60 @@ fn discard_goes_back_to_the_last_commit() {
     engine.lock().unwrap();
     assert!(matches!(engine.discard(), Err(VaultError::Locked)));
     assert!(matches!(engine.changes(), Err(VaultError::Locked)));
+}
+
+#[test]
+fn restore_brings_back_the_previous_commit_as_changes() {
+    let dir = TempDir::new();
+    let mut engine = committed_three(&dir);
+    engine.delete("bank").unwrap();
+    engine.commit().unwrap(); // the backup still has bank
+
+    assert_eq!(engine.restore_backup("password").unwrap(), 1);
+    assert_eq!(engine.changes().unwrap(), [Change::Added("bank".into())]);
+    engine.discard().unwrap(); // undoes the restore
+    assert_eq!(engine.get_entries().unwrap(), ["github", "wifi"]);
+
+    engine.restore_backup("password").unwrap();
+    engine.commit().unwrap();
+    assert_eq!(engine.get_entries().unwrap(), ["bank", "github", "wifi"]);
+    // That commit kept the version it replaced: restoring again swaps back.
+    assert_eq!(engine.restore_backup("password").unwrap(), 1);
+    assert_eq!(engine.changes().unwrap(), [Change::Removed("bank".into())]);
+}
+
+#[test]
+fn restore_refuses_what_it_cannot_do() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "personal", "password");
+    assert!(matches!(engine.restore_backup("password"), Err(VaultError::NoBackup)));
+
+    engine.add("github", "alice", "hunter2").unwrap();
+    assert!(matches!(engine.restore_backup("password"), Err(VaultError::UncommittedChanges)));
+    engine.commit().unwrap();
+    assert!(matches!(engine.restore_backup("wrong-password"), Err(VaultError::InvalidPassword)));
+    assert_eq!(engine.get_entries().unwrap(), ["github"], "nothing changed");
+
+    engine.lock().unwrap();
+    assert!(matches!(engine.restore_backup("password"), Err(VaultError::Locked)));
+}
+
+#[test]
+fn a_backup_under_another_password_is_reported_as_such() {
+    // As if the backup were swapped for another vault's.
+    let dir = TempDir::new();
+    let mut other = created(&dir, "other", "other-password");
+    other.commit().unwrap();
+    other.lock().unwrap();
+    let mut engine = committed_three(&dir);
+    fs::copy(dir.file("other.vault"), dir.file("personal.bkp")).unwrap();
+    assert!(matches!(engine.restore_backup("password"), Err(VaultError::BackupUnreadable)));
+    assert_eq!(engine.get_entries().unwrap(), ["bank", "github", "wifi"]);
+    // Still on its own key.
+    engine.add("gitlab", "alice", "tanuki").unwrap();
+    engine.commit().unwrap();
+    engine.lock().unwrap();
+    engine.unlock("personal", "password").unwrap();
 }
 
 #[test]

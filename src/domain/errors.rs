@@ -29,6 +29,15 @@ pub enum VaultError {
     #[error("Nothing was imported: {0}")]
     Import(String),
 
+    #[error("There are uncommitted changes: commit or discard them first")]
+    UncommittedChanges,
+
+    #[error("This vault has no backup yet: each commit keeps the version it replaces")]
+    NoBackup,
+
+    #[error("The backup doesn't open with this vault's password, or is damaged")]
+    BackupUnreadable,
+
     #[error("Password length must be between {min} and {max}")]
     InvalidPasswordLength { min: usize, max: usize },
 

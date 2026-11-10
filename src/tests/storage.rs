@@ -247,3 +247,16 @@ fn vaults_live_in_dot_vault_in_the_home_directory() {
         assert!(matches!(vault_dir(home.clone()), Err(StorageError::NoHomeDir)), "{home:?}");
     }
 }
+
+#[test]
+fn the_backup_is_the_version_the_last_save_replaced() {
+    let dir = TempDir::new();
+    let mut s = storage(&dir, "personal");
+    s.save(b"first").unwrap();
+    assert_eq!(s.load_backup().unwrap(), None);
+    s.save(b"second").unwrap();
+    assert_eq!(s.load_backup().unwrap().as_deref(), Some(&b"first"[..]));
+    // Reading it doesn't count as reading the vault: saves go on as before.
+    s.save(b"third").unwrap();
+    assert_eq!(s.load_backup().unwrap().as_deref(), Some(&b"second"[..]));
+}

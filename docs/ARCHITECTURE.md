@@ -50,7 +50,7 @@ The innermost layer. Contains only:
 - **`format.rs`** — The file format as pure functions: `VaultFile::decode` (v0 to v3) and `encode` (v3), the header used as AES-GCM associated data, and the plaintext codec for the entries. No serialization library: every length is checked against the bytes present.
 - **`ports.rs`** — Pure trait definitions:
   - `CryptoPort` — `salt_gen`, `init`, `reset`, `encrypt`, `decrypt`
-  - `StoragePort` — `exists`, `set_path`, `get_path`, `load`, `save`, `list_vaults`
+  - `StoragePort` — `exists`, `set_path`, `get_path`, `load`, `save`, `load_backup`, `list_vaults`
 - **`errors.rs`** — Typed error hierarchy:
   - `VaultError` — top-level (wraps `CryptoError` and `StorageError`)
   - `CryptoError` — adapter-level crypto failures
@@ -85,6 +85,7 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 | `commit()` | Encrypts current entries, saves to disk with fresh nonce; they become the new last commit |
 | `changes()` | What differs from the last commit: entries added, removed, renamed, or changed (which fields). `is_dirty()` is whether there are any, so edits that undo each other leave the vault clean |
 | `discard()` | Goes back to the last commit, keeping the vault open |
+| `restore_backup(pw)` | Loads the backup in place of the open entries, as uncommitted changes. Checks the password, and derives the backup's own key when it differs (an upgrade's backup is the old file), going back to the vault's key afterwards |
 | `add(svc, user, pw)` | Inserts a new `Entry`, marks dirty |
 | `delete(svc)` | Removes entry (marks dirty only on success) |
 | `rename_entry(old, new)` | Renames an entry, keeping its password, notes, history and creation date |

@@ -285,6 +285,36 @@ fn status_shows_the_changes_and_discard_drops_them() {
 }
 
 #[test]
+fn restore_loads_the_backup_as_changes() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "password");
+    s.add("github", "alice", "hunter2");
+    s.add("bank", "bob", "0099");
+    s.command("commit");
+    s.command("rm bank");
+    s.answer("Remove 'bank'? (y/N): ", "y");
+    s.command("commit");
+    s.expect("Changes committed.");
+
+    s.command("restore");
+    s.answer("Vault password: ", "password");
+    s.expect("Backup loaded: 1 uncommitted change.");
+    s.command("status");
+    assert!(s.output().contains("added    bank"));
+    s.command("commit");
+    s.expect("Changes committed.");
+    s.command("get bank");
+    assert!(s.output().contains("pass: 0099"));
+
+    s.command("rm github");
+    s.answer("Remove 'github'? (y/N): ", "y");
+    s.command("restore");
+    s.expect("There are uncommitted changes: commit or discard them first");
+    s.exit_discarding();
+}
+
+#[test]
 fn mv_renames_an_entry() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());

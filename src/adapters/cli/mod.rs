@@ -14,7 +14,10 @@ use zeroize::Zeroizing;
 
 use crate::{
     application::engine::{Change, Upgrade, VaultEngine},
-    domain::ports::{CryptoPort, StoragePort},
+    domain::{
+        errors::VaultError,
+        ports::{CryptoPort, StoragePort},
+    },
 };
 
 use clipboard::{CLEAR_AFTER, SecretClipboard, SystemClipboard};
@@ -201,6 +204,25 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                     println!("Changes discarded.\n");
                 } else {
                     println!("Aborted.\n");
+                }
+            }
+
+            Command::Restore => {
+                // Before asking for the password, which would be wasted.
+                if self.engine.is_locked() {
+                    return Err(VaultError::Locked.into());
+                }
+                if self.engine.is_dirty() {
+                    return Err(VaultError::UncommittedChanges.into());
+                }
+                let password = self.request_password("Vault password: ")?;
+                match self.engine.restore_backup(&password)? {
+                    0 => println!("The backup holds the same entries as the vault: nothing to restore.\n"),
+                    n => println!(
+                        "Backup loaded: {}. 'status' shows them, 'commit' keeps them, \
+                         'discard' undoes the restore.\n",
+                        uncommitted(n)
+                    ),
                 }
             }
 
@@ -571,6 +593,7 @@ rm <svc>             Remove entry
 commit               Save changes to disk
 status               Show what changed since the last commit
 discard              Drop the uncommitted changes (asks first)
+restore              Load the backup (what the last commit replaced) as uncommitted changes
 rename <new>         Rename current vault
 gen [length]         Generate random password (8-256 chars, default: 20)
 info                 Show vault info

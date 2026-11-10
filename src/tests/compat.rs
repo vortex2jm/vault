@@ -95,6 +95,27 @@ fn v0_vaults_get_a_stronger_key_when_the_current_cost_is_higher() {
 }
 
 #[test]
+fn the_backup_left_by_an_upgrade_restores_and_the_new_key_stays() {
+    // The backup is the original v0 file: another salt, the legacy cost and
+    // no associated data.
+    let stronger = KdfParams { t_cost: 3, ..KdfParams::LEGACY };
+    let (dir, _) = copy_fixture(V0_FIXTURE);
+    let mut engine = engine_with_kdf(dir.path(), stronger);
+    engine.unlock("fixture", FIXTURE_PASSWORD).unwrap();
+    let upgraded = current_file(&dir);
+
+    assert_eq!(engine.restore_backup(FIXTURE_PASSWORD).unwrap(), 0, "same entries");
+    assert_fixture_entries(&engine, 0);
+    engine.add("new", "u", "p").unwrap();
+    engine.commit().unwrap();
+    let after = current_file(&dir);
+    assert_eq!((after.salt, after.kdf), (upgraded.salt, upgraded.kdf), "the vault's key again");
+    engine.lock().unwrap();
+    engine.unlock("fixture", FIXTURE_PASSWORD).unwrap();
+    assert!(engine.get("new").is_ok());
+}
+
+#[test]
 fn v1_and_v2_vaults_are_rewritten_in_the_current_format_with_the_same_key() {
     for (fixture, version) in [(V1_FIXTURE, 1), (V2_FIXTURE, 2)] {
         let (dir, original) = copy_fixture(fixture);

@@ -39,6 +39,9 @@ pub trait StoragePort {
     /// previous version as a backup. Fails with `StorageError::Conflict` if
     /// the file changed since this session last loaded or saved it.
     fn save(&mut self, data: &[u8]) -> Result<(), StorageError>;
+    /// Reads the backup of the current vault: the version its last save
+    /// replaced. `None` until a second save.
+    fn load_backup(&self) -> Result<Option<Vec<u8>>, StorageError>;
     fn list_vaults(&self) -> Result<Vec<String>, StorageError>;
     /// Renames the current vault file (and its backup) to `new_name`. Fails
     /// with `StorageError::AlreadyExists` if another vault has that name.

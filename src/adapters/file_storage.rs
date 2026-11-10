@@ -84,6 +84,10 @@ impl StoragePort for FileStorage {
         Ok(())
     }
 
+    fn load_backup(&self) -> Result<Option<Vec<u8>>, StorageError> {
+        read_if_exists(&self.path.with_extension("bkp"))
+    }
+
     fn load(&mut self) -> Result<Vec<u8>, StorageError> {
         let buffer = fs::read(&self.path)?;
         self.seen = Some(fingerprint(&buffer));
