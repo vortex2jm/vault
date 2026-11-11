@@ -78,6 +78,10 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
 
             let cmd = match Command::parse(input) {
                 Some(c) => c,
+                None if commands::words(input).is_err() => {
+                    println!("A quote is never closed.\n");
+                    continue;
+                }
                 None => {
                     println!("Unknown command. Type 'help' for a list of commands.\n");
                     continue;

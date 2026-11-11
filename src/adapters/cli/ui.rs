@@ -6,7 +6,7 @@ use rustyline::{
     validate::Validator,
 };
 
-use super::commands::{Argument, Command};
+use super::commands::{Argument, Command, Split, quoted};
 
 /* =======================
    ANSI COLORS
@@ -54,28 +54,23 @@ impl Completer for VaultHelper {
         pos: usize,
         ctx: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Pair>)> {
-        let before = &line[..pos];
-        // Only the word under the cursor is replaced: it starts right after
-        // the last whitespace before the cursor.
-        let start = before
-            .char_indices()
-            .rev()
-            .find(|(_, c)| c.is_whitespace())
-            .map_or(0, |(i, c)| i + c.len_utf8());
-        let word = &before[start..];
-        let mut previous = before[..start].split_whitespace();
+        // Only the word under the cursor is replaced, quotes and all: words
+        // are split as the parser splits them.
+        let split = Split::of(&line[..pos]);
+        let word = split.current.as_deref().unwrap_or("");
+        let in_quotes = split.quote.is_some();
 
-        let candidates = match (previous.next(), previous.next()) {
-            (None, _) => self.complete_command(word),
-            (Some(command), None) => match Command::first_argument(command) {
-                Some(Argument::Entry) => matching(&self.entries, word),
-                Some(Argument::Vault) => matching(&self.vaults, word),
+        let candidates = match split.words.as_slice() {
+            [] => self.complete_command(word),
+            [command] => match Command::first_argument(command) {
+                Some(Argument::Entry) => matching(&self.entries, word, in_quotes),
+                Some(Argument::Vault) => matching(&self.vaults, word, in_quotes),
                 Some(Argument::Path) => return self.files.complete(line, pos, ctx),
                 Some(Argument::Free) | None => Vec::new(),
             },
             _ => Vec::new(),
         };
-        Ok((start, candidates))
+        Ok((split.start, candidates))
     }
 }
 
@@ -115,14 +110,18 @@ impl VaultHelper {
     }
 }
 
-/// The `names` that start with `word`.
-fn matching(names: &[String], word: &str) -> Vec<Pair> {
+/// The `names` that start with `word`, written so they come back as one
+/// word: in quotes if they need them, or if the user opened one.
+fn matching(names: &[String], word: &str, in_quotes: bool) -> Vec<Pair> {
     names
         .iter()
         .filter(|name| name.starts_with(word))
         .map(|name| Pair {
             display: name.clone(),
-            replacement: name.clone(),
+            replacement: match quoted(name) {
+                plain if in_quotes && &plain == name => format!("\"{name}\""),
+                written => written,
+            },
         })
         .collect()
 }

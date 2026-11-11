@@ -46,7 +46,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 - [x] **E2** Clipboard: clear automatically after ~30 s and stay out of clipboard-manager history.
 - [x] **E3** Auto-lock after N minutes of inactivity.
 - [x] **E5** Rename an entry (`mv <old> <new>`).
-- [ ] **E6** Quoted arguments, so names can contain spaces (`add "My Bank" joao`).
+- [x] **E6** Quoted arguments, so names can contain spaces (`add "My Bank" joao`).
 - [x] **E7** `copy <svc> user` to copy the username.
 - [x] **E8** `status` (changes since the last commit) and `discard` (drop uncommitted changes without locking).
 - [x] **E9** `restore` from the `.bkp`.

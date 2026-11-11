@@ -624,8 +624,8 @@ fn a_failed_import_adds_nothing() {
             "line 3: expected 3 fields, as in the header, but found 4",
         ),
         (
-            b"service,username,password\na,u,p\nMy Bank,u,p\n",
-            "line 3: service names can't be empty or contain spaces ('My Bank')",
+            b"service,username,password\na,u,p\nMy\tBank,u,p\n",
+            "line 3: service names can't be empty or contain control characters (\"My\\tBank\")",
         ),
         (b"service,username,password\na,u,p\n,u,p\n", "line 3: service names"),
         (b"service,username,password\na,u,p\nb,u,\xff\n", "line 3 isn't valid UTF-8"),
@@ -665,16 +665,25 @@ fn import_reads_files_that_start_with_a_byte_order_mark() {
 }
 
 #[test]
-fn add_refuses_service_names_commands_cannot_reach() {
+fn service_names_may_have_spaces_inside_but_nothing_unseen() {
     let dir = TempDir::new();
     let mut engine = created(&dir, "personal", "password");
-    for name in ["", "My Bank", "tab\there"] {
+    // Commands take it in quotes: `get "My Bank"`.
+    engine.add("My Bank", "u", "p").unwrap();
+    assert_eq!(engine.get("My Bank").unwrap().service, "My Bank");
+    for name in ["", " lead", "trail ", "tab\there", "line\nbreak", "bell\u{7}"] {
         assert!(
             matches!(engine.add(name, "u", "p"), Err(VaultError::InvalidServiceName(_))),
             "{name:?}"
         );
     }
-    assert!(engine.get_entries().unwrap().is_empty());
+    assert_eq!(engine.get_entries().unwrap(), ["My Bank"]);
+
+    // Import follows the same rule, trimming the ends.
+    let csv = dir.file("import.csv");
+    fs::write(&csv, "service,username,password\n  Home Wifi ,u,p\n").unwrap();
+    assert_eq!(engine.import(path_str(&csv)).unwrap(), 1);
+    assert!(engine.get("Home Wifi").is_ok());
 }
 
 /// A committed vault with bank, github and wifi.
@@ -883,7 +892,7 @@ fn mv_refuses_what_it_cannot_do() {
     assert!(matches!(engine.rename_entry("nope", "x"), Err(VaultError::EntryNotFound)));
     assert!(matches!(engine.rename_entry("github", "bank"), Err(VaultError::EntryExists)));
     assert!(matches!(
-        engine.rename_entry("github", "My Git"),
+        engine.rename_entry("github", " gh"),
         Err(VaultError::InvalidServiceName(_))
     ));
     engine.rename_entry("github", "github").unwrap(); // nothing to do

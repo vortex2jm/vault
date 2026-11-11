@@ -12,6 +12,26 @@ fn tab_completes_command_names() {
 }
 
 #[test]
+fn names_with_spaces_go_in_quotes() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "password");
+    s.command(r#"add "My Bank" "joao silva""#);
+    s.answer("Service password: ", "0099");
+    s.answer("Notes (optional): ", "");
+    s.expect("Entry 'My Bank' added.");
+    // Tab writes the quotes.
+    s.keys(&[b"get My".as_slice(), TAB].concat());
+    s.expect(r#"get "My Bank""#);
+    s.send(b"\r");
+    let out = s.output();
+    assert!(out.contains("user: joao silva") && out.contains("pass: 0099"), "{out}");
+    s.command(r#"get "My Bank"#);
+    s.expect("A quote is never closed.");
+    s.exit_discarding();
+}
+
+#[test]
 fn tab_completes_entry_names() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());

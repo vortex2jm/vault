@@ -130,7 +130,8 @@ impl Command {
     /// Parses a line typed at the prompt. Returns `None` for unknown commands
     /// and for commands missing a required argument.
     pub fn parse(input: &str) -> Option<Self> {
-        let mut p = input.split_whitespace();
+        let words = words(input).ok()?;
+        let mut p = words.iter().map(String::as_str);
         let cmd = p.next()?;
 
         Some(match cmd {
@@ -171,5 +172,85 @@ impl Command {
             "exit"   => Command::Exit,
             _ => return None,
         })
+    }
+}
+
+/// A quote opened in a line but never closed.
+#[derive(Debug, PartialEq, Eq)]
+pub struct UnclosedQuote;
+
+/// The words of a typed line, as a shell splits them: `"..."` or `'...'`
+/// keep spaces inside a word (`"My Bank"`), and outside single quotes `\`
+/// takes the next character as it is (`My\ Bank`, `"say \"hi\""`).
+pub fn words(input: &str) -> Result<Vec<String>, UnclosedQuote> {
+    let split = Split::of(input);
+    match split.quote {
+        Some(_) => Err(UnclosedQuote),
+        None => Ok(split.words.into_iter().chain(split.current).collect()),
+    }
+}
+
+/// A line split into words up to some point, possibly in the middle of one:
+/// what Tab completion needs to know.
+pub struct Split {
+    /// The finished words.
+    pub words: Vec<String>,
+    /// The word being typed, if any, as it reads without quotes and escapes.
+    pub current: Option<String>,
+    /// Byte index where the word being typed starts (at its opening quote,
+    /// if it has one); the end of the text if no word is being typed.
+    pub start: usize,
+    /// The quote still open, if any.
+    pub quote: Option<char>,
+}
+
+impl Split {
+    pub fn of(text: &str) -> Self {
+        let mut split = Split { words: Vec::new(), current: None, start: text.len(), quote: None };
+        let mut chars = text.char_indices().peekable();
+        while let Some((i, c)) = chars.next() {
+            match (split.quote, c) {
+                (None, c) if c.is_whitespace() => {
+                    split.words.extend(split.current.take());
+                    split.start = text.len();
+                    continue;
+                }
+                (Some(q), c) if c == q => split.quote = None,
+                (None, '"' | '\'') => split.quote = Some(c),
+                (Some('\''), c) => split.current.get_or_insert_default().push(c),
+                (_, '\\') => {
+                    // Escapes anything outside quotes, only `"` and `\` inside
+                    // double quotes. A lone one at the end is itself.
+                    let escapes = |next: char| split.quote.is_none() || next == '"' || next == '\\';
+                    let c = match chars.peek() {
+                        Some(&(_, next)) if escapes(next) => {
+                            chars.next();
+                            next
+                        }
+                        _ => c,
+                    };
+                    split.current.get_or_insert_default().push(c);
+                }
+                (_, c) => split.current.get_or_insert_default().push(c),
+            }
+            if split.current.is_none() {
+                split.current = Some(String::new()); // an opening quote starts a word
+            }
+            if split.start == text.len() {
+                split.start = i;
+            }
+        }
+        split
+    }
+}
+
+/// `name` as it must be typed to come back as one word.
+pub fn quoted(name: &str) -> String {
+    let plain = !name.is_empty()
+        && !name.chars().any(|c| c.is_whitespace() || matches!(c, '"' | '\'' | '\\'));
+    if plain {
+        name.to_string()
+    } else {
+        format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\""))
     }
 }

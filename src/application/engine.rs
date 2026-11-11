@@ -106,10 +106,11 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         Ok(())
     }
 
-    /// Commands take a service name as one word: an empty one, or one with
-    /// spaces, could never be typed.
+    /// A service name may have spaces inside (commands take it in quotes),
+    /// but not at its ends, where nobody would see them, nor control
+    /// characters; and it can't be empty.
     fn check_service_name(name: &str) -> Result<(), VaultError> {
-        if name.is_empty() || name.chars().any(char::is_whitespace) {
+        if name.is_empty() || name.trim() != name || name.chars().any(char::is_control) {
             return Err(VaultError::InvalidServiceName(name.to_string()));
         }
         Ok(())
@@ -623,7 +624,7 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
             let service = field(columns.service).trim();
             if Self::check_service_name(service).is_err() {
                 return Err(VaultError::Import(format!(
-                    "line {line}: service names can't be empty or contain spaces ('{service}')"
+                    "line {line}: service names can't be empty or contain control characters ({service:?})"
                 )));
             }
             if self.entries.contains_key(service) || !seen.insert(service.to_string()) {

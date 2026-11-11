@@ -80,6 +80,8 @@ vault[locked]>
 
 ## Commands
 
+Arguments with spaces go in quotes, as in a shell: `add "My Bank" "joao silva"`, `get "My Bank"`, `export "~/My Files/vault.csv"`. Tab writes the quotes for you. Single quotes work too, and outside them `\` keeps the next character as it is (`My\ Bank`).
+
 | Command | Arguments | Description |
 |---------|-----------|-------------|
 | **Core** |
@@ -176,7 +178,7 @@ aws,admin,"super,secure!",root account
 
 - `import` finds the columns by name, in any order and any case: `service`, `username` and `password` are required, and `notes` is optional (exports from older versions don't have it). Other columns are ignored.
 - Every row has as many fields as the header. A field with a comma or a quote must be quoted, as in the `aws` row above.
-- Service names can't be empty or contain spaces, since commands take them as one word.
+- Service names can have spaces (type them in quotes), but can't be empty or contain control characters. Spaces around a name are trimmed.
 - Import is all or nothing: if a row is invalid, the error names its line and no entry is added.
 - Importing merges entries: if a service already exists in the vault, or appears twice in the file, the first version is kept and the other row is skipped.
 - The password history is not exported.

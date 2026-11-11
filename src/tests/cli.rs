@@ -10,7 +10,7 @@ use super::support::TempDir;
 use crate::{
     adapters::cli::{
         auto_lock,
-        commands::{Command, Field, Generate},
+        commands::{Command, Field, Generate, UnclosedQuote, quoted, words},
         describe, expand_path,
         ui::VaultHelper,
     },
@@ -76,6 +76,52 @@ fn parses_every_command_with_its_arguments() {
     ];
     for (input, expected) in cases {
         assert_eq!(Command::parse(input), Some(expected), "{input:?}");
+    }
+}
+
+#[test]
+fn quotes_and_backslashes_keep_spaces_in_a_word() {
+    let cases: [(&str, &[&str]); 10] = [
+        (r#"add "My Bank" joao"#, &["add", "My Bank", "joao"]),
+        (r#"get 'a\"b'"#, &["get", r#"a\"b"#]), // nothing escapes in single quotes
+        ("get 'My Bank'", &["get", "My Bank"]),
+        (r"get My\ Bank", &["get", "My Bank"]),
+        (r#"get My" "Bank"#, &["get", "My Bank"]),
+        (r#"add "say \"hi\"" u"#, &["add", r#"say "hi""#, "u"]),
+        (r"add 'back\slash' u", &["add", r"back\slash", "u"]),
+        (r#"add "" u"#, &["add", "", "u"]),
+        ("  get   github  ", &["get", "github"]),
+        (r"get trailing\", &["get", r"trailing\"]),
+    ];
+    for (line, expected) in cases {
+        assert_eq!(words(line).unwrap(), expected, "{line}");
+    }
+    for open in [r#"get "My Bank"#, "get 'x", r#"add "a\" u"#] {
+        assert_eq!(words(open), Err(UnclosedQuote), "{open}");
+    }
+}
+
+#[test]
+fn commands_take_quoted_names() {
+    let cases = [
+        (r#"add "My Bank" "joao silva""#, Command::Add { service: "My Bank".into(), username: "joao silva".into() }),
+        ("get 'My Bank'", Command::Get("My Bank".into())),
+        (r#"mv "My Bank" bank"#, Command::Move { from: "My Bank".into(), to: "bank".into() }),
+        (r#"export "~/My Files/out.csv""#, Command::Export("~/My Files/out.csv".into())),
+    ];
+    for (input, expected) in cases {
+        assert_eq!(Command::parse(input), Some(expected), "{input:?}");
+    }
+    assert_eq!(Command::parse(r#"get "My Bank"#), None);
+}
+
+#[test]
+fn names_are_quoted_only_when_they_need_it() {
+    assert_eq!(quoted("github"), "github");
+    assert_eq!(quoted("My Bank"), r#""My Bank""#);
+    for name in ["github", "My Bank", r#"say "hi""#, r"back\slash", "it's", ""] {
+        let written = quoted(name);
+        assert_eq!(words(&written).unwrap(), [name], "{written}");
     }
 }
 
@@ -170,6 +216,19 @@ fn tab_completes_entry_names_after_entry_commands() {
         );
     }
     assert_eq!(complete_with("get b", &entries, &[]).1, ["bank"]);
+}
+
+#[test]
+fn tab_writes_names_with_spaces_in_quotes() {
+    let entries = ["My Bank", "Mystery", "github"];
+    let complete = |line| complete_with(line, &entries, &[]);
+    assert_eq!(complete("get My"), (4, vec![r#""My Bank""#.to_string(), "Mystery".to_string()]));
+    // Typed in quotes, or escaped: the whole word is replaced.
+    assert_eq!(complete(r#"get "My B"#), (4, vec![r#""My Bank""#.to_string()]));
+    assert_eq!(complete(r"get My\ B"), (4, vec![r#""My Bank""#.to_string()]));
+    assert_eq!(complete(r#"get "git"#), (4, vec![r#""github""#.to_string()]));
+    // A quoted first argument counts as one word.
+    assert!(complete(r#"mv "My Bank" b"#).1.is_empty());
 }
 
 #[test]

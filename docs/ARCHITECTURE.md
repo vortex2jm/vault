@@ -30,7 +30,7 @@ src/
     └── cli/
         ├── mod.rs            # VaultCli — REPL loop, command dispatch
         ├── clipboard.rs      # copies out of clipboard history, cleared after 30 s
-        ├── commands.rs       # Command enum
+        ├── commands.rs       # Command enum; lines split into words like a shell
         ├── input.rs          # the main prompt, on its own thread (auto-lock)
         └── ui.rs             # VaultHelper (tab-completion, colors)
 ```
@@ -142,7 +142,8 @@ The outermost layer. Implements the interactive REPL.
 - **`run()`** — main loop: refreshes the completion names → reads input → parses command (`Command::parse`) → dispatches to `handle_command`.
 - **Auto-lock** — the main prompt is read on its own thread (`input.rs`), so the main thread, which owns the engine, can wait for the line with a timeout. When `VAULT_AUTO_LOCK` (300 s by default) passes at the prompt, it calls `lock_if_clean()`: the vault locks, or, with uncommitted changes, stays open with a one-time warning. Everything else that reads the terminal runs on the main thread while the prompt thread waits for its next request. The notice is written directly (rustyline's external printer stalls on input arriving in bursts in 17.0.2).
 - **`confirm_exit()` / `confirm_lock()`** — when `dirty = true`, prompts the user to commit/discard before proceeding.
-- **`VaultHelper`** — implements `rustyline::Completer`. Only the word under the cursor is replaced, and what is offered depends on its position: command names in the first word; in the first argument, entry names (`get`, `copy`, `update`, `rm`), vault names (`unlock`, `drop`) or file paths (`import`, `export`), as declared by `Command::first_argument`. The CLI hands it the current entry and vault names before each prompt.
+- **`commands::words`** — splits a line as a shell does: quotes keep spaces in a word, and `\` escapes outside single quotes (which is also how rustyline's file completion writes spaces). `Command::parse` works on these words, so names and paths can have spaces.
+- **`VaultHelper`** — implements `rustyline::Completer`. Only the word under the cursor is replaced, split the same way as the parser splits it (quotes included), and names that need quotes are offered in them, and what is offered depends on its position: command names in the first word; in the first argument, entry names (`get`, `copy`, `update`, `rm`), vault names (`unlock`, `drop`) or file paths (`import`, `export`), as declared by `Command::first_argument`. The CLI hands it the current entry and vault names before each prompt.
 - **`find()`** — the interactive selector: a `dialoguer` `FuzzySelect` over the entry names, then a `Select` with the actions (copy password or username, show, update, remove), which reuse the regular commands. Esc and Ctrl-C cancel.
 - **`SecretClipboard`** (`clipboard.rs`) — what `copy` uses. Each copy is marked as a secret for clipboard managers and gets a timer that clears it 30 s later, if the clipboard still holds it (compared by SHA-256) and no newer copy was made. Dropping it, when the program exits, clears a copy still pending. The system clipboard sits behind a small `Backend` trait, so tests use a fake.
 - Passwords are read with `rpassword` (no echo).
