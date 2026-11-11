@@ -1,3 +1,6 @@
 /target
 *.vault
 *.csv
+
+# Test fixture: a vault in the old format, kept on purpose (see docs/TESTING.md).
+!tests/fixtures/*.vault

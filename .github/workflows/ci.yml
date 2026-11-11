@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests and clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rust (stable)
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add clippy
+
+      - name: Tests (unit and end-to-end)
+        run: cargo test --locked
+
+      - name: Clippy
+        # Warnings show without failing the build while one old warning is
+        # still open (expand_path). Once it's fixed, add `-- -D warnings`.
+        run: cargo clippy --locked --all-targets
+
+  msrv:
+    name: Builds on Rust 1.89 (rust-version)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rust 1.89
+        run: rustup toolchain install 1.89 --profile minimal --no-self-update
+
+      - name: Check
+        run: cargo +1.89 check --locked --all-targets

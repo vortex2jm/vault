@@ -1,0 +1,67 @@
+name: Release
+
+# A tag vX.Y.Z, pushed by hand or created by publishing a release on GitHub,
+# builds and publishes that version. See RELEASING.md.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: The tag matches Cargo.toml
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME, but Cargo.toml says version $version"
+            exit 1
+          fi
+
+      - name: Rust (stable, with the static Linux target)
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup target add x86_64-unknown-linux-musl
+
+      - name: Tests
+        run: cargo test --locked
+
+      - name: Static Linux binary
+        run: cargo build --locked --release --target x86_64-unknown-linux-musl
+
+      - name: Package
+        run: |
+          name="vault-$GITHUB_REF_NAME-x86_64-linux"
+          mkdir "$name"
+          cp target/x86_64-unknown-linux-musl/release/vault README.md LICENSE "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > SHA256SUMS
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v heading="## [${GITHUB_REF_NAME#v}]" \
+            'index($0, "## [") == 1 { take = index($0, heading) == 1; next } take' \
+            CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no section for ${GITHUB_REF_NAME#v}"
+            exit 1
+          fi
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files="vault-$GITHUB_REF_NAME-x86_64-linux.tar.gz SHA256SUMS"
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            # Published from the GitHub page: the release is there, add the files.
+            gh release upload "$GITHUB_REF_NAME" $files --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" $files \
+              --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+          fi

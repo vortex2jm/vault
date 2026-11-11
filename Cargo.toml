@@ -2,19 +2,45 @@
 name = "vault"
 version = "0.1.0"
 edition = "2024"
+# File locking in std (File::lock) needs 1.89.
+rust-version = "1.89"
+description = "A local, offline password manager for the terminal: one encrypted file per vault, AES-256-GCM and Argon2id"
+license = "MIT"
+repository = "https://github.com/vortex2jm/vault"
+readme = "README.md"
+keywords = ["password-manager", "cli", "encryption", "argon2", "aes-gcm"]
+categories = ["command-line-utilities", "cryptography"]
 
 [dependencies]
-aes-gcm = "0.10.3"
+aes-gcm = { version = "0.10.3", features = ["zeroize"] }
 anyhow = "1.0.100"
-argon2 = "0.5.3"
-arboard = "3"
-chrono = { version = "0.4.41", features = ["serde"] }
+argon2 = { version = "0.5.3", features = ["zeroize"] }
+# Text only: the default features add image support (image, png, tiff…).
+arboard = { version = "3", default-features = false }
+chrono = "0.4.41"
 csv = "1"
-dirs-2 = "3.0.1"
+dialoguer = { version = "0.12", default-features = false, features = ["fuzzy-select"] }
 rpassword = "7.4.0"
 rustyline = "17.0.2"
-serde = { version = "1", features = ["derive"] }
 sha2 = "0.10.9"
 thiserror = "2.0.17"
-wincode = { version = "0.2.5", features = ["derive"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
+
+# Not used directly: listed only to turn on its `zeroize` feature, which
+# wipes the AES round keys (they contain the key) when a cipher is dropped.
+# It adds no crate, since aes-gcm already uses it: keep the version in step.
+aes = { version = "0.8.4", features = ["zeroize"] }
+
+# No core dumps, no same-user debugging (adapters/process.rs); also the
+# pseudo-terminal of the end-to-end tests in tests/e2e/. Already in the tree.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Argon2 is very slow without optimisations: compile it (and its hash) with
+# them even in debug builds, so the test suite and `cargo run` stay fast.
+# Release builds are unaffected.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

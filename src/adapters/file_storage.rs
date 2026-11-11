@@ -1,37 +1,52 @@
 use sha2::{Digest, Sha256};
 use std::{
-    fs::{self, File, OpenOptions, create_dir_all},
-    io::{BufReader, Read, Write},
-    path::PathBuf,
+    fs::{self, File, OpenOptions},
+    io::{ErrorKind, Write},
+    path::{Path, PathBuf},
 };
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 
 use crate::domain::{errors::StorageError, ports::StoragePort};
 
+/// Lock file shared by every session on the vault directory: commits take it
+/// so they never interleave.
+const COMMIT_LOCK: &str = ".lock";
+
 pub struct FileStorage {
     base_path: PathBuf,
     path: PathBuf,
+    /// SHA-256 of the vault file as this session last read or wrote it, or
+    /// `None` if there was no file. A save only replaces the file while it
+    /// still matches, so what another session saved is never overwritten.
+    seen: Option<[u8; 32]>,
 }
 
 impl FileStorage {
-    pub fn new() -> Self {
-        let home = dirs_2::home_dir().expect("Error: Could not found home dir!");
-        let base_path = home.join(".vault");
+    /// Stores vaults in `~/.vault`.
+    pub fn new() -> Result<Self, StorageError> {
+        Ok(Self::with_base_path(vault_dir(std::env::home_dir())?))
+    }
 
+    /// Stores vaults under `base_path` instead of `~/.vault`.
+    pub fn with_base_path(base_path: PathBuf) -> Self {
         // Complete path
         let path = base_path.join("default.vault");
 
-        Self { path, base_path }
+        Self {
+            path,
+            base_path,
+            seen: None,
+        }
     }
+}
 
-    fn hash_file(path: &PathBuf) -> Result<Vec<u8>, StorageError> {
-        let file = File::open(path)?;
-        let mut reader = BufReader::new(file);
-        let mut hasher = Sha256::new();
-        std::io::copy(&mut reader, &mut hasher)?;
-        Ok(hasher.finalize().to_vec())
-    }
+/// `<home>/.vault`. An empty home would put the vaults in whatever directory
+/// the program runs from, so it counts as none.
+pub(crate) fn vault_dir(home: Option<PathBuf>) -> Result<PathBuf, StorageError> {
+    home.filter(|home| !home.as_os_str().is_empty())
+        .map(|home| home.join(".vault"))
+        .ok_or(StorageError::NoHomeDir)
 }
 
 impl StoragePort for FileStorage {
@@ -40,6 +55,7 @@ impl StoragePort for FileStorage {
 
         // Set complete path through base path
         self.path = self.base_path.join(path);
+        self.seen = None;
     }
 
     fn get_path(&self) -> Option<String> {
@@ -49,62 +65,32 @@ impl StoragePort for FileStorage {
             .map(|s| s.to_string())
     }
 
-    fn save(&self, data: &[u8]) -> Result<(), StorageError> {
-        // Checks dir
-        if let Some(parent) = self.path.parent() {
-            create_dir_all(parent)?;
+    fn save(&mut self, data: &[u8]) -> Result<(), StorageError> {
+        create_private_dir(&self.base_path)?;
+        // Released when `_lock` is dropped, at the end of the save.
+        let _lock = open_private(&self.base_path.join(COMMIT_LOCK), false)?;
+        _lock.lock()?;
+
+        let current = read_if_exists(&self.path)?;
+        if current.as_deref().map(fingerprint) != self.seen {
+            return Err(StorageError::Conflict);
         }
-
-        // Create backup file
-        let backup_path = self.path.with_extension("bkp");
-        if self.path.exists() {
-            std::fs::copy(&self.path, &backup_path)?;
-
-            // Validate bkp integrity
-            let orig_hash = Self::hash_file(&self.path)?;
-            let bkp_hash = Self::hash_file(&backup_path)?;
-
-            if orig_hash != bkp_hash {
-                return Err(StorageError::IntegrityError);
-            }
+        // The version being replaced becomes the backup.
+        if let Some(previous) = &current {
+            write_atomically(&self.path.with_extension("bkp"), previous)?;
         }
-
-        // Create the vault file with restrictive permissions (owner read/write only).
-        // File::create inherits the process umask (commonly 644); using OpenOptions
-        // with an explicit mode guarantees 600 regardless of the user's umask.
-        #[cfg(unix)]
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&self.path)?;
-
-        #[cfg(not(unix))]
-        let mut file = File::create(&self.path)?;
-        if file.write_all(data).and_then(|_| file.sync_all()).is_err() {
-            // Write failed — attempt to restore from backup.
-            // The restore error is handled separately so it doesn't mask
-            // the original write failure.
-            if backup_path.exists()
-                && let Err(restore_err) = std::fs::copy(&backup_path, &self.path)
-            {
-                eprintln!(
-                    "CRITICAL: vault write failed and backup restore also failed: {}",
-                    restore_err
-                );
-            }
-            return Err(StorageError::IntegrityError);
-        }
-
+        write_atomically(&self.path, data)?;
+        self.seen = Some(fingerprint(data));
         Ok(())
     }
 
-    fn load(&self) -> Result<std::vec::Vec<u8>, StorageError> {
-        let mut file = File::open(&self.path)?;
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)?;
+    fn load_backup(&self) -> Result<Option<Vec<u8>>, StorageError> {
+        read_if_exists(&self.path.with_extension("bkp"))
+    }
 
+    fn load(&mut self) -> Result<Vec<u8>, StorageError> {
+        let buffer = fs::read(&self.path)?;
+        self.seen = Some(fingerprint(&buffer));
         Ok(buffer)
     }
 
@@ -138,6 +124,15 @@ impl StoragePort for FileStorage {
 
     fn rename(&mut self, new_name: String) -> Result<(), StorageError> {
         let new_path = self.base_path.join(format!("{}.vault", new_name));
+        if new_path == self.path {
+            return Ok(());
+        }
+        // fs::rename silently replaces an existing file: without this check,
+        // another vault (and its backup) would be destroyed.
+        if new_path.exists() {
+            return Err(StorageError::AlreadyExists);
+        }
+
         let old_bkp = self.path.with_extension("bkp");
         let new_bkp = new_path.with_extension("bkp");
 
@@ -172,4 +167,77 @@ impl StoragePort for FileStorage {
 
         Ok(())
     }
+}
+
+/// Creates `dir` if needed and makes sure only its owner can list or enter
+/// it (vault names would show otherwise). A directory left open by an older
+/// version is tightened here, on the next save.
+fn create_private_dir(dir: &Path) -> Result<(), StorageError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+        if fs::metadata(dir)?.permissions().mode() & 0o077 != 0 {
+            fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+        }
+    }
+    #[cfg(not(unix))]
+    fs::create_dir_all(dir)?;
+    Ok(())
+}
+
+fn fingerprint(data: &[u8]) -> [u8; 32] {
+    Sha256::digest(data).into()
+}
+
+/// The file's content, or `None` if there is no file.
+fn read_if_exists(path: &Path) -> Result<Option<Vec<u8>>, StorageError> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Replaces `path` with `data` so that a crash at any point leaves either the
+/// old file or the new one, never a mix: the data goes to a temporary file,
+/// which is flushed to disk and renamed over `path`; then the directory is
+/// flushed so the rename survives a crash too.
+fn write_atomically(path: &Path, data: &[u8]) -> Result<(), StorageError> {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".tmp");
+    let tmp = path.with_file_name(name);
+
+    let written = open_private(&tmp, true)
+        .and_then(|mut file| {
+            file.write_all(data)?;
+            file.sync_all()
+        })
+        .and_then(|()| fs::rename(&tmp, path));
+    if let Err(e) = written {
+        let _ = fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    sync_dir(path)
+}
+
+/// Opens `path` for writing, creating it readable and writable by the owner
+/// only; `truncate` empties an existing file.
+fn open_private(path: &Path, truncate: bool) -> std::io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.write(true).create(true).truncate(truncate);
+    #[cfg(unix)]
+    options.mode(0o600);
+    options.open(path)
+}
+
+/// Flushes the directory holding `path`, so a rename inside it is durable.
+fn sync_dir(path: &Path) -> Result<(), StorageError> {
+    #[cfg(unix)]
+    if let Some(dir) = path.parent() {
+        File::open(dir)?.sync_all()?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
 }

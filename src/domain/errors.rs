@@ -23,11 +23,56 @@ pub enum VaultError {
     #[error("Vault already exists")]
     VaultAlreadyExists,
 
+    #[error("Invalid service name {0:?}: it can't be empty, start or end with spaces, or contain control characters")]
+    InvalidServiceName(String),
+
+    #[error("Nothing was imported: {0}")]
+    Import(String),
+
+    #[error("There are uncommitted changes: commit or discard them first")]
+    UncommittedChanges,
+
+    #[error("This vault has no backup yet: each commit keeps the version it replaces")]
+    NoBackup,
+
+    #[error("The backup doesn't open with this vault's password, or is damaged")]
+    BackupUnreadable,
+
+    #[error("Password length must be between {min} and {max}")]
+    InvalidPasswordLength { min: usize, max: usize },
+
+    #[error("A passphrase has between {min} and {max} words")]
+    InvalidWordCount { min: usize, max: usize },
+
+    #[error("The master password must have at least {min} characters")]
+    MasterPasswordTooShort { min: usize },
+
+    #[error("{0} already exists: choose another file")]
+    FileExists(String),
+
     #[error("Serialization failed")]
     Serialization,
 
     #[error("Invalid password or corrupted vault")]
     InvalidPassword,
+
+    #[error("The vault file is damaged, or isn't a vault file")]
+    Corrupted,
+
+    #[error("This vault uses file format v{0}, newer than this program supports: update vault")]
+    UnsupportedFormat(u16),
+
+    #[error(
+        "The vault changed on disk since it was opened (another session?). \
+         Nothing was saved: lock and unlock it to reload"
+    )]
+    ChangedOnDisk,
+
+    #[error(
+        "Password changed, but the backup could not be refreshed ({0}) and still \
+         opens with the old password: run commit again"
+    )]
+    StaleBackup(String),
 
     #[error("Cryptography error: {0}")]
     Crypto(#[from] CryptoError),
@@ -41,8 +86,14 @@ pub enum StorageError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Integrity check failed")]
-    IntegrityError,
+    #[error("Target already exists")]
+    AlreadyExists,
+
+    #[error("The file changed since it was last read")]
+    Conflict,
+
+    #[error("No home directory to keep the vaults in: set HOME")]
+    NoHomeDir,
 }
 
 #[derive(Debug, Error)]
