@@ -58,6 +58,10 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 - [x] **X2** Lean health report: reused and short passwords (age as information only).
 - [x] **X3** Password history per entry (last N passwords with dates). Needs E1.
 
+## Release
+
+- [x] **R1** First release (v0.1.0): `CHANGELOG.md`, CI and release workflows (static Linux binary and checksums), `RELEASING.md`, crate metadata. The tag and the push are done by hand (see `RELEASING.md`).
+
 ## Dropped
 
 - **B14** Leading zeros: not a vault bug; the CSV went through a spreadsheet before the import (warning goes in B13).

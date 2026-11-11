@@ -43,6 +43,8 @@ tests/fixtures/v3.vault   a vault in format v3, with notes and a password histor
 | `cargo test engine::` | tests whose path contains `engine::` |
 | `cargo test -- --ignored` | only the known bugs (expected to fail) |
 
+CI (`.github/workflows/ci.yml`) runs `cargo test` and clippy on every push to `develop` or `main` and on every pull request, and checks that the crate still builds on Rust 1.89, the `rust-version` in `Cargo.toml`. The release workflow runs the tests again before building.
+
 ## Conventions
 
 - **Every backlog item ships with tests.** A bug fix makes its `known_bugs` test pass: remove the `#[ignore]` and move the test to the module of its area, in the commit that ticks the item in `BACKLOG.md`. A feature adds tests to the module of its area, and to `tests/e2e/` if it shows up in the terminal.

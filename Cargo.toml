@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 # File locking in std (File::lock) needs 1.89.
 rust-version = "1.89"
+description = "A local, offline password manager for the terminal: one encrypted file per vault, AES-256-GCM and Argon2id"
+license = "MIT"
+repository = "https://github.com/vortex2jm/vault"
+readme = "README.md"
+keywords = ["password-manager", "cli", "encryption", "argon2", "aes-gcm"]
+categories = ["command-line-utilities", "cryptography"]
 
 [dependencies]
 aes-gcm = { version = "0.10.3", features = ["zeroize"] }

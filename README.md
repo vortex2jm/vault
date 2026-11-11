@@ -26,12 +26,28 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 
 ## Requirements
 
-- Rust toolchain ≥ 1.89 (edition 2024)
+- Rust 1.89 or newer (edition 2024), only to build from source
 - **Linux/Unix**: `copy` needs a graphical session, X11 or XWayland under Wayland (`arboard` talks to X11, with no system libraries to install). Without one, everything else works and `copy` reports the clipboard as unavailable.
 
 ---
 
 ## Installation
+
+**A ready binary** (Linux x86_64, static: no dependencies): download `vault-v0.1.0-x86_64-linux.tar.gz` and `SHA256SUMS` from the [latest release](https://github.com/vortex2jm/vault/releases/latest), then
+
+```bash
+sha256sum -c SHA256SUMS
+tar -xzf vault-v0.1.0-x86_64-linux.tar.gz
+install vault-v0.1.0-x86_64-linux/vault ~/.local/bin/
+```
+
+**From source**, with Rust 1.89 or newer:
+
+```bash
+cargo install --git https://github.com/vortex2jm/vault --tag v0.1.0
+```
+
+Or from a clone:
 
 ```bash
 git clone https://github.com/vortex2jm/vault
@@ -39,12 +55,7 @@ cd vault
 cargo install --path .
 ```
 
-Or just build and run locally:
-
-```bash
-cargo build --release
-./target/release/vault
-```
+Releases and what changed in each: [CHANGELOG.md](CHANGELOG.md); how they are made: [RELEASING.md](RELEASING.md).
 
 ---
 
@@ -186,6 +197,12 @@ aws,admin,"super,secure!",root account
 - Importing merges entries: if a service already exists in the vault, or appears twice in the file, the first version is kept and the other row is skipped.
 - The password history is not exported.
 - **Don't round-trip an export through a spreadsheet.** Opening the CSV in Excel, LibreOffice or Google Sheets and saving it again turns values like `0042` into `42`, long numbers into `1.2E+15` and some text into dates. Edit it in a text editor, or import it into the spreadsheet as text.
+
+---
+
+## License
+
+[MIT](LICENSE).
 
 ---
 
