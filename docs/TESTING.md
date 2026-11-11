@@ -16,16 +16,14 @@ src/tests/                unit and component tests of the crate internals
 ├── engine.rs             VaultEngine flows with the real adapters, upgrades
 ├── cli.rs                command parser, Tab completion, ~ expansion
 ├── clipboard.rs          the clipboard for secrets, on a fake clipboard
-├── compat.rs             old vault files: opens (and upgrades) the fixtures
-└── known_bugs.rs         open bugs from BACKLOG.md, #[ignore]d
+└── compat.rs             old vault files: opens (and upgrades) the fixtures
 
 tests/e2e/                the real binary in a pseudo-terminal (Unix only)
 ├── support.rs            the harness: Session, TempDir, key codes
 ├── flows.rs              everyday flows: create, add, commit, exit menu, passwd…
 ├── editing.rs            line editing: Tab, history, cursor keys, Ctrl-C, Ctrl-D
 ├── selector.rs           the find selector: arrows, fuzzy filter, action menu
-├── process.rs            the process: no core dumps, no same-user memory reads (Linux)
-└── known_bugs.rs         open bugs that only show up in a terminal, #[ignore]d
+└── process.rs            the process: no core dumps, no same-user memory reads (Linux)
 
 tests/fixtures/v0.vault   a vault from before the versioned format
 tests/fixtures/v1.vault   a vault in format v1
@@ -37,18 +35,17 @@ tests/fixtures/v3.vault   a vault in format v3, with notes and a password histor
 
 | Command | Runs |
 |---------|------|
-| `cargo test` | everything except the known bugs |
+| `cargo test` | everything |
 | `cargo test --bin vault` | unit tests only |
 | `cargo test --test e2e` | end-to-end tests only |
 | `cargo test engine::` | tests whose path contains `engine::` |
-| `cargo test -- --ignored` | only the known bugs (expected to fail) |
 
 CI (`.github/workflows/ci.yml`) runs `cargo test` and clippy on every push to `develop` or `main` and on every pull request, and checks that the crate still builds on Rust 1.89, the `rust-version` in `Cargo.toml`. The release workflow runs the tests again before building.
 
 ## Conventions
 
-- **Every backlog item ships with tests.** A bug fix makes its `known_bugs` test pass: remove the `#[ignore]` and move the test to the module of its area, in the commit that ticks the item in `BACKLOG.md`. A feature adds tests to the module of its area, and to `tests/e2e/` if it shows up in the terminal.
-- **Known-bug tests describe the behaviour we want**, not the current one. When more than one fix is acceptable (refusing an operation instead of handling it, say), the test accepts any of them and checks the invariant.
+- **Every change ships with tests**, in the module of its area, and in `tests/e2e/` if it shows up in the terminal.
+- **A bug fix starts with the test that shows the bug.** Write it first, watch it fail, then fix: the test proves the bug existed and stays as its regression test. Bugs are tracked in GitHub issues, and the fix's commit closes its issue (`fixes #12`). A test describes the behaviour wanted; when more than one fix is acceptable (refusing an operation instead of handling it, say), it accepts any of them and checks the invariant.
 - **Never regenerate the fixtures.** Each `tests/fixtures/vN.vault` proves that vaults written in format N still open. When the format changes again, add a `v4.vault` with the same entries and keep every older test. The password and the expected entries are in `src/tests/compat.rs`.
 - **End-to-end tests type like a user.** `Session::command` waits for the prompt and runs a line, `answer` replies to a sub-prompt (password, y/N, the exit menu), `output` returns what the last command printed, and `expect` waits for any text. Escape sequences are stripped before matching. `Session::start_with` passes environment variables (`VAULT_AUTO_LOCK` for the auto-lock tests); otherwise it is unset, so the default applies.
 - **Break it on purpose before committing.** For each change, mutate the new code (drop a check, swap a branch, off-by-one a bound) and make sure some test fails; a mutant that survives means a missing test, or code that does nothing.

@@ -13,5 +13,4 @@ mod engine;
 mod format;
 mod generator;
 mod health;
-mod known_bugs;
 mod storage;
