@@ -421,13 +421,23 @@ fn gen_prints_a_password_of_the_requested_length() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
     s.command("gen 16");
+    assert_eq!(generated(&s.output()), ("≈98 bits".into(), 16)); // 16 × log2(70)
+    s.command("gen 16 nosymbols noambiguous");
     let out = s.output();
-    let password = out
-        .lines()
-        .find_map(|line| line.strip_prefix("Generated: "))
-        .unwrap_or_else(|| panic!("no password printed: {out}"));
-    assert_eq!(password.len(), 16);
+    let password = out.lines().find_map(|line| line.split_once("bits): ")).unwrap().1;
+    assert!(password.chars().all(|c| c.is_ascii_alphanumeric() && !"Il1O0o".contains(c)), "{out}");
+    s.command("gen words 5");
+    let out = s.output();
+    let (bits, _) = generated(&out);
+    assert_eq!(bits, "≈65 bits", "{out}");
     s.exit();
+}
+
+/// The strength and length of what `gen` printed.
+fn generated(out: &str) -> (String, usize) {
+    let line = out.lines().find_map(|l| l.strip_prefix("Generated (")).unwrap_or_else(|| panic!("{out}"));
+    let (bits, secret) = line.split_once("): ").unwrap();
+    (bits.to_string(), secret.chars().count())
 }
 
 #[test]

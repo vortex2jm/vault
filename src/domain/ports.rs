@@ -22,8 +22,9 @@ pub trait CryptoPort {
         nonce: &[u8],
         associated_data: &[u8],
     ) -> Result<Vec<u8>, CryptoError>;
-    /// Generates a cryptographically random password of `length` characters.
-    fn gen_password(&self, length: usize) -> String;
+    /// A cryptographically random number in `0..n`, every value equally
+    /// likely. `n` must not be 0.
+    fn random_below(&self, n: usize) -> usize;
     /// Returns true if `password` + `salt` at cost `kdf` derives to the
     /// currently held key.
     fn verify_password(&self, password: &str, salt: &[u8], kdf: &KdfParams) -> bool;

@@ -1,4 +1,4 @@
-use crate::domain::models::Entry;
+use crate::domain::{generator::PasswordOptions, models::Entry};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -25,9 +25,39 @@ pub enum Command {
     Drop(String),
     Find(Option<String>),
     History(String),
-    Gen(Option<usize>),
+    Gen(Generate),
     Add { service: String, username: String },
     Move { from: String, to: String },
+}
+
+/// What `gen` makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Generate {
+    /// `gen [length] [nosymbols] [noambiguous]`
+    Password { length: Option<usize>, options: PasswordOptions },
+    /// `gen words [count]`
+    Passphrase { words: Option<usize> },
+}
+
+impl Generate {
+    /// `gen`'s arguments, in any order; `None` for one it doesn't know.
+    fn parse<'a>(mut args: impl Iterator<Item = &'a str>) -> Option<Self> {
+        let mut first = args.next();
+        if first == Some("words") {
+            let words = args.next().map(str::parse).transpose().ok()?;
+            return args.next().is_none().then_some(Generate::Passphrase { words });
+        }
+        let (mut length, mut options) = (None, PasswordOptions::default());
+        while let Some(arg) = first.take().or_else(|| args.next()) {
+            match arg {
+                "nosymbols" => options.symbols = false,
+                "noambiguous" => options.ambiguous = false,
+                _ if length.is_none() => length = Some(arg.parse().ok()?),
+                _ => return None,
+            }
+        }
+        Some(Generate::Password { length, options })
+    }
 }
 
 /// Which field of an entry `copy` takes.
@@ -126,7 +156,7 @@ impl Command {
             },
             "export" => Command::Export(p.next()?.into()),
             "import" => Command::Import(p.next()?.into()),
-            "gen"    => Command::Gen(p.next().and_then(|s| s.parse().ok())),
+            "gen"    => Command::Gen(Generate::parse(p)?),
             "commit" => Command::Commit,
             "status" => Command::Status,
             "discard" => Command::Discard,

@@ -9,7 +9,8 @@ src/tests/                unit and component tests of the crate internals
 ├── support.rs            TempDir and engine helpers, the cheap test KDF cost
 ├── domain.rs             Entry, KdfParams
 ├── format.rs             the file format byte by byte: every version, plaintext codec
-├── crypto.rs             AesGcmCrypto: key derivation, AES-GCM, generator
+├── generator.rs          generated passwords and passphrases, with counting "randomness"
+├── crypto.rs             AesGcmCrypto: key derivation, AES-GCM, random numbers
 ├── storage.rs            FileStorage: files, backups, atomic saves, sessions
 ├── engine.rs             VaultEngine flows with the real adapters, upgrades
 ├── cli.rs                command parser, Tab completion, ~ expansion

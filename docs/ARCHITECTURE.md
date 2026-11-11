@@ -14,6 +14,7 @@ src/
 │   ├── mod.rs
 │   ├── models.rs             # Entry, KdfParams, VaultState
 │   ├── format.rs             # the vault file format, byte by byte
+│   ├── generator.rs          # generated passwords and passphrases (EFF word list)
 │   ├── ports.rs              # CryptoPort, StoragePort (traits)
 │   └── errors.rs             # VaultError, CryptoError, StorageError
 │
@@ -49,7 +50,7 @@ The innermost layer. Contains only:
   - `VaultState` — what the engine keeps about the open vault's key: its `salt` and `KdfParams`.
 - **`format.rs`** — The file format as pure functions: `VaultFile::decode` (v0 to v3) and `encode` (v3), the header used as AES-GCM associated data, and the plaintext codec for the entries. No serialization library: every length is checked against the bytes present.
 - **`ports.rs`** — Pure trait definitions:
-  - `CryptoPort` — `salt_gen`, `init`, `reset`, `encrypt`, `decrypt`
+  - `CryptoPort` — `salt_gen`, `init`, `reset`, `encrypt`, `decrypt`, `verify_password`, `random_below` (the randomness behind `domain::generator`)
   - `StoragePort` — `exists`, `set_path`, `get_path`, `load`, `save`, `load_backup`, `list_vaults`
 - **`errors.rs`** — Typed error hierarchy:
   - `VaultError` — top-level (wraps `CryptoError` and `StorageError`)

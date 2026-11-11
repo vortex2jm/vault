@@ -50,7 +50,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 - [x] **E7** `copy <svc> user` to copy the username.
 - [x] **E8** `status` (changes since the last commit) and `discard` (drop uncommitted changes without locking).
 - [x] **E9** `restore` from the `.bkp`.
-- [ ] **E10** Generator options: no symbols, no ambiguous characters, passphrases.
+- [x] **E10** Generator options: no symbols, no ambiguous characters, passphrases.
 - [x] **E11** Disable core dumps and same-user ptrace (`prctl(PR_SET_DUMPABLE, 0)`).
 
 ## Extras

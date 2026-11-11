@@ -6,12 +6,13 @@ use super::support::{CHEAP, Engine, TempDir, created, engine, engine_with_kdf, p
 use crate::{
     adapters::{aes_crypto::AesGcmCrypto, file_storage::FileStorage},
     application::engine::{
-        Change, MAX_GENERATED_LENGTH, MIN_GENERATED_LENGTH, MIN_MASTER_PASSWORD_LENGTH, Upgrade,
-        VaultEngine,
+        Change, MAX_GENERATED_LENGTH, MAX_PASSPHRASE_WORDS, MIN_GENERATED_LENGTH,
+        MIN_MASTER_PASSWORD_LENGTH, MIN_PASSPHRASE_WORDS, Upgrade, VaultEngine,
     },
     domain::{
         errors::{StorageError, VaultError},
         format::{self, CURRENT_VERSION, VaultFile},
+        generator::{self, PasswordOptions},
         models::KdfParams,
         ports::{CryptoPort, StoragePort},
     },
@@ -1010,14 +1011,45 @@ fn renaming_a_vault_to_its_own_name_changes_nothing() {
 fn gen_password_only_accepts_sensible_lengths() {
     let dir = TempDir::new();
     let engine = engine(&dir);
+    let all = PasswordOptions::default();
     for length in [MIN_GENERATED_LENGTH, 20, MAX_GENERATED_LENGTH] {
-        assert_eq!(engine.gen_password(length).unwrap().len(), length);
+        assert_eq!(engine.gen_password(length, all).unwrap().len(), length);
     }
     // A huge length used to abort the whole process (B10).
     for length in [0, MIN_GENERATED_LENGTH - 1, MAX_GENERATED_LENGTH + 1, usize::MAX] {
         assert!(
-            matches!(engine.gen_password(length), Err(VaultError::InvalidPasswordLength { .. })),
+            matches!(engine.gen_password(length, all), Err(VaultError::InvalidPasswordLength { .. })),
             "{length}"
+        );
+    }
+}
+
+#[test]
+fn generated_passwords_follow_the_options_and_differ() {
+    let dir = TempDir::new();
+    let engine = engine(&dir);
+    let plain = PasswordOptions { symbols: false, ambiguous: false };
+    let charset = generator::charset(plain);
+    let password = engine.gen_password(MAX_GENERATED_LENGTH, plain).unwrap();
+    assert!(password.chars().all(|c| charset.contains(&c)), "{password}");
+    let all = PasswordOptions::default();
+    assert_ne!(engine.gen_password(20, all).unwrap(), engine.gen_password(20, all).unwrap());
+}
+
+#[test]
+fn gen_passphrase_takes_a_sensible_number_of_words() {
+    let dir = TempDir::new();
+    let engine = engine(&dir);
+    for words in [MIN_PASSPHRASE_WORDS, 6, MAX_PASSPHRASE_WORDS] {
+        let phrase = engine.gen_passphrase(words).unwrap();
+        // A few listed words have a hyphen of their own ("t-shirt").
+        assert!(phrase.matches('-').count() >= words - 1, "{phrase}");
+    }
+    assert_ne!(engine.gen_passphrase(6).unwrap(), engine.gen_passphrase(6).unwrap());
+    for words in [0, MIN_PASSPHRASE_WORDS - 1, MAX_PASSPHRASE_WORDS + 1] {
+        assert!(
+            matches!(engine.gen_passphrase(words), Err(VaultError::InvalidWordCount { .. })),
+            "{words}"
         );
     }
 }

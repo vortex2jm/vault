@@ -13,6 +13,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **Interactive selector** (`find`): browse your entries with the arrow keys and fuzzy search
 - **Notes and password history** on each entry: the last 10 passwords are kept, with the date each one was replaced
 - **Auto-lock**: an unlocked vault left alone at the prompt for 5 minutes locks itself (with uncommitted changes it only warns)
+- **Password generator**: random passwords (optionally without symbols or look-alike characters) and passphrases from the EFF word list, with their strength in bits
 - **Careful clipboard**: `copy` keeps the password out of clipboard managers' history and clears it after 30 s
 - **Crash-safe saves**: every commit writes a new file and atomically swaps it in, keeping the previous version as a backup
 - **Safe across sessions**: open the same vault in two terminals; a commit never overwrites what the other one saved
@@ -56,7 +57,7 @@ Confirm password: ••••••••
 Vault 'personal' created.
 
 vault[personal|0]> gen 16
-Generated: K9#mP2$qLv8nW!j&
+Generated (≈98 bits): K9#mP2$qLv8nW!j&
 
 vault[personal|0]> add github myuser
 Service password: ••••••••
@@ -96,7 +97,8 @@ vault[locked]>
 | `update` | `<service>` | Update an entry: blank keeps the username or password; a new password sends the old one to the history; the notes come pre-filled to edit |
 | `mv` | `<service> <new>` | Rename an entry (password, notes and history stay) |
 | `rm` | `<service>` | Remove a credential entry |
-| `gen` | `[length]` | Generate a random strong password (8–256 chars, default: 20) |
+| `gen` | `[length] [nosymbols] [noambiguous]` | Generate a random password (8–256 chars, default 20), without symbols or look-alike characters (`Il1O0o`) if asked; shows its strength in bits |
+| `gen words` | `[count]` | Generate a passphrase of 4–20 words (default 6, ≈78 bits), such as `maple-orbit-cactus-violin-ember-tundra` |
 | **Data & I/O** |
 | `commit` | — | Save changes to disk |
 | `status` | — | Show what changed since the last commit (added, removed, renamed, changed fields) |
@@ -178,6 +180,12 @@ aws,admin,"super,secure!",root account
 - Import is all or nothing: if a row is invalid, the error names its line and no entry is added.
 - Importing merges entries: if a service already exists in the vault, or appears twice in the file, the first version is kept and the other row is skipped.
 - The password history is not exported.
+
+---
+
+## Credits
+
+Passphrases use the [EFF large wordlist](https://www.eff.org/dice) (`src/domain/eff_large_wordlist.txt`, unchanged), by the Electronic Frontier Foundation, under [CC BY 3.0 US](https://creativecommons.org/licenses/by/3.0/us/).
 
 ---
 

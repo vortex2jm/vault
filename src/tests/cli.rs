@@ -10,12 +10,14 @@ use super::support::TempDir;
 use crate::{
     adapters::cli::{
         auto_lock,
-        commands::{Command, Field},
+        commands::{Command, Field, Generate},
         describe, expand_path,
         ui::VaultHelper,
     },
-    domain::models::Entry,
+    domain::{generator::PasswordOptions, models::Entry},
 };
+
+const ALL: PasswordOptions = PasswordOptions { symbols: true, ambiguous: true };
 
 #[test]
 fn parses_every_command_with_its_arguments() {
@@ -40,8 +42,24 @@ fn parses_every_command_with_its_arguments() {
         ("update github", Command::Update("github".into())),
         ("rm github", Command::Remove("github".into())),
         ("mv github gh", Command::Move { from: "github".into(), to: "gh".into() }),
-        ("gen", Command::Gen(None)),
-        ("gen 32", Command::Gen(Some(32))),
+        ("gen", Command::Gen(Generate::Password { length: None, options: ALL })),
+        ("gen 32", Command::Gen(Generate::Password { length: Some(32), options: ALL })),
+        (
+            "gen 24 nosymbols",
+            Command::Gen(Generate::Password {
+                length: Some(24),
+                options: PasswordOptions { symbols: false, ..ALL },
+            }),
+        ),
+        (
+            "gen noambiguous nosymbols 16",
+            Command::Gen(Generate::Password {
+                length: Some(16),
+                options: PasswordOptions { symbols: false, ambiguous: false },
+            }),
+        ),
+        ("gen words", Command::Gen(Generate::Passphrase { words: None })),
+        ("gen words 5", Command::Gen(Generate::Passphrase { words: Some(5) })),
         ("commit", Command::Commit),
         ("status", Command::Status),
         ("discard", Command::Discard),
@@ -70,7 +88,8 @@ fn extra_whitespace_is_ignored() {
 fn missing_arguments_and_unknown_commands_are_rejected() {
     let inputs = [
         "", "   ", "create", "unlock", "drop", "add", "add github", "get", "copy", "update",
-        "rm", "history", "mv", "mv github", "rename", "export", "import", "frobnicate", "GET github", "copy github pin",
+        "rm", "history", "mv", "mv github", "rename", "export", "import", "frobnicate", "GET github", "copy github pin", "gen abc", "gen 12 34",
+        "gen nosymbols words", "gen words five", "gen words 5 6",
     ];
     for input in inputs {
         assert_eq!(Command::parse(input), None, "{input:?}");
@@ -79,7 +98,7 @@ fn missing_arguments_and_unknown_commands_are_rejected() {
 
 /// Whether `name` followed by one or two arguments parses.
 fn parses_with_arguments(name: &str) -> bool {
-    [" x", " x y"].iter().any(|args| Command::parse(&format!("{name}{args}")).is_some())
+    [" x", " x y", " 1"].iter().any(|args| Command::parse(&format!("{name}{args}")).is_some())
 }
 
 #[test]

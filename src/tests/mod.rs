@@ -11,5 +11,6 @@ mod crypto;
 mod domain;
 mod engine;
 mod format;
+mod generator;
 mod known_bugs;
 mod storage;

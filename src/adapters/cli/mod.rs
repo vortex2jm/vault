@@ -16,12 +16,13 @@ use crate::{
     application::engine::{Change, Upgrade, VaultEngine},
     domain::{
         errors::VaultError,
+        generator,
         ports::{CryptoPort, StoragePort},
     },
 };
 
 use clipboard::{CLEAR_AFTER, SecretClipboard, SystemClipboard};
-use commands::{Command, Field};
+use commands::{Command, Field, Generate};
 use input::Input;
 use ui::{BLUE, CYAN, GREEN, RED, RESET, VaultHelper, YELLOW};
 
@@ -274,10 +275,19 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
 
             Command::Find(filter) => self.find(filter.unwrap_or_default())?,
 
-            Command::Gen(length) => {
-                let len = length.unwrap_or(20);
-                let pw = Zeroizing::new(self.engine.gen_password(len)?);
-                println!("Generated: {}{}{}\n", CYAN, *pw, RESET);
+            Command::Gen(what) => {
+                let (secret, bits) = match what {
+                    Generate::Password { length, options } => {
+                        let length = length.unwrap_or(20);
+                        (self.engine.gen_password(length, options)?, generator::password_bits(length, options))
+                    }
+                    Generate::Passphrase { words } => {
+                        let words = words.unwrap_or(6);
+                        (self.engine.gen_passphrase(words)?, generator::passphrase_bits(words))
+                    }
+                };
+                let secret = Zeroizing::new(secret);
+                println!("Generated (≈{bits:.0} bits): {CYAN}{}{RESET}\n", *secret);
             }
 
             Command::Info => {
@@ -595,7 +605,9 @@ status               Show what changed since the last commit
 discard              Drop the uncommitted changes (asks first)
 restore              Load the backup (what the last commit replaced) as uncommitted changes
 rename <new>         Rename current vault
-gen [length]         Generate random password (8-256 chars, default: 20)
+gen [len] [nosymbols] [noambiguous]
+                     Generate a password (8-256 chars, default 20)
+gen words [n]        Generate a passphrase of n words (4-20, default 6)
 info                 Show vault info
 ls                   List vaults (locked) or entries (unlocked)
 export <path>        Export entries to CSV (plaintext!)

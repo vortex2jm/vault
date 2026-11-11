@@ -11,6 +11,7 @@ use zeroize::Zeroize;
 use crate::domain::{
     errors::{StorageError, VaultError},
     format::{self, CURRENT_VERSION, FormatError, VaultFile},
+    generator::{self, PasswordOptions},
     models::{Entry, KdfParams, VaultState},
     ports::{CryptoPort, StoragePort},
 };
@@ -19,6 +20,10 @@ use crate::domain::{
 pub const MIN_GENERATED_LENGTH: usize = 8;
 /// Longest password `gen_password` produces.
 pub const MAX_GENERATED_LENGTH: usize = 256;
+/// Fewest words `gen_passphrase` uses (about 52 bits).
+pub const MIN_PASSPHRASE_WORDS: usize = 4;
+/// Most words `gen_passphrase` uses.
+pub const MAX_PASSPHRASE_WORDS: usize = 20;
 /// Shortest master password a new vault or `change_password` accepts, in
 /// characters. Vaults whose password predates the rule still unlock.
 pub const MIN_MASTER_PASSWORD_LENGTH: usize = 8;
@@ -509,16 +514,28 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
         Ok(())
     }
 
-    /// Returns a cryptographically random password of `length` characters,
-    /// which must be between `MIN_GENERATED_LENGTH` and `MAX_GENERATED_LENGTH`.
-    pub fn gen_password(&self, length: usize) -> Result<String, VaultError> {
+    /// A random password of `length` characters, which must be between
+    /// `MIN_GENERATED_LENGTH` and `MAX_GENERATED_LENGTH`.
+    pub fn gen_password(&self, length: usize, options: PasswordOptions) -> Result<String, VaultError> {
         if !(MIN_GENERATED_LENGTH..=MAX_GENERATED_LENGTH).contains(&length) {
             return Err(VaultError::InvalidPasswordLength {
                 min: MIN_GENERATED_LENGTH,
                 max: MAX_GENERATED_LENGTH,
             });
         }
-        Ok(self.crypto.gen_password(length))
+        Ok(generator::password(length, options, |n| self.crypto.random_below(n)))
+    }
+
+    /// A random passphrase of `words` words, between `MIN_PASSPHRASE_WORDS`
+    /// and `MAX_PASSPHRASE_WORDS`.
+    pub fn gen_passphrase(&self, words: usize) -> Result<String, VaultError> {
+        if !(MIN_PASSPHRASE_WORDS..=MAX_PASSPHRASE_WORDS).contains(&words) {
+            return Err(VaultError::InvalidWordCount {
+                min: MIN_PASSPHRASE_WORDS,
+                max: MAX_PASSPHRASE_WORDS,
+            });
+        }
+        Ok(generator::passphrase(words, |n| self.crypto.random_below(n)))
     }
 
     /// Returns a human-readable summary of the current vault.

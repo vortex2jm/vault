@@ -193,17 +193,13 @@ fn salts_are_random() {
 }
 
 #[test]
-fn generated_passwords_have_the_requested_length_and_charset() {
+fn random_below_covers_the_range_evenly() {
     let crypto = AesGcmCrypto::new();
-    for len in [1, 20, 64] {
-        let password = crypto.gen_password(len);
-        assert_eq!(password.len(), len);
-        assert!(
-            password
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"!@#$%^&*".contains(&b)),
-            "{password}"
-        );
+    let mut counts = [0usize; 7];
+    for _ in 0..7000 {
+        counts[crypto.random_below(7)] += 1;
     }
-    assert_ne!(crypto.gen_password(20), crypto.gen_password(20));
+    // About 1000 each; this far off would take a broken draw.
+    assert!(counts.iter().all(|&c| (700..1300).contains(&c)), "{counts:?}");
+    assert_eq!(crypto.random_below(1), 0);
 }

@@ -127,21 +127,18 @@ impl CryptoPort for AesGcmCrypto {
         salt
     }
 
-    fn gen_password(&self, length: usize) -> String {
-        const CHARSET: &[u8] =
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-        let n = CHARSET.len();
-        let limit = (256 / n) * n;
-        let mut password = String::with_capacity(length);
-        let mut buf = [0u8; 1];
-        while password.len() < length {
-            OsRng.fill_bytes(&mut buf);
-            let b = buf[0] as usize;
-            if b < limit {
-                password.push(CHARSET[b % n] as char);
+    fn random_below(&self, n: usize) -> usize {
+        assert!(n > 0, "random_below(0)");
+        let n = n as u64;
+        // 2^64 mod n: drawing again below it leaves a whole number of
+        // n-sized blocks, so `x % n` favours no value.
+        let skip = n.wrapping_neg() % n;
+        loop {
+            let x = OsRng.next_u64();
+            if x >= skip {
+                return (x % n) as usize;
             }
         }
-        password
     }
 
     fn verify_password(&self, password: &str, salt: &[u8], kdf: &KdfParams) -> bool {
