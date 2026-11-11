@@ -10,6 +10,7 @@ src/tests/                unit and component tests of the crate internals
 ├── domain.rs             Entry, KdfParams
 ├── format.rs             the file format byte by byte: every version, plaintext codec
 ├── generator.rs          generated passwords and passphrases, with counting "randomness"
+├── health.rs             the health report: reused, short and oldest passwords
 ├── crypto.rs             AesGcmCrypto: key derivation, AES-GCM, random numbers
 ├── storage.rs            FileStorage: files, backups, atomic saves, sessions
 ├── engine.rs             VaultEngine flows with the real adapters, upgrades

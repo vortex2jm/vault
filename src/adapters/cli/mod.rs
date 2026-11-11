@@ -17,6 +17,7 @@ use crate::{
     domain::{
         errors::VaultError,
         generator,
+        health::SHORT_PASSWORD,
         ports::{CryptoPort, StoragePort},
     },
 };
@@ -229,6 +230,32 @@ impl<S: StoragePort, C: CryptoPort> VaultCli<S, C> {
                         uncommitted(n)
                     ),
                 }
+            }
+
+            Command::Health => {
+                let report = self.engine.health()?;
+                if report.reused.is_empty() && report.short.is_empty() {
+                    println!("{GREEN}No reused or short passwords.{RESET}");
+                }
+                if !report.reused.is_empty() {
+                    println!("{YELLOW}Reused passwords{RESET} (each line shares one):");
+                    for group in &report.reused {
+                        println!("  {}", group.join(", "));
+                    }
+                }
+                if !report.short.is_empty() {
+                    println!("{YELLOW}Short passwords{RESET} (under {SHORT_PASSWORD} characters):");
+                    for (service, length) in &report.short {
+                        println!("  {service} ({length})");
+                    }
+                }
+                if !report.ages.is_empty() {
+                    println!("Oldest passwords, by when they were set:");
+                    for (service, set_at) in report.ages.iter().take(5) {
+                        println!("  {}  {service}", local_date(*set_at));
+                    }
+                }
+                println!();
             }
 
             Command::Commit => {
@@ -607,6 +634,7 @@ rm <svc>             Remove entry
 commit               Save changes to disk
 status               Show what changed since the last commit
 discard              Drop the uncommitted changes (asks first)
+health               Reused and short passwords, and the oldest ones
 restore              Load the backup (what the last commit replaced) as uncommitted changes
 rename <new>         Rename current vault
 gen [len] [nosymbols] [noambiguous]
@@ -635,6 +663,11 @@ fn chosen(result: dialoguer::Result<Option<usize>>) -> Result<Option<usize>> {
         }
         other => Ok(other?),
     }
+}
+
+/// A Unix timestamp as a local date, e.g. `2026-11-05`.
+fn local_date(timestamp: i64) -> String {
+    local_time(timestamp).split(' ').next().unwrap_or("?").to_string()
 }
 
 /// A Unix timestamp as local date and time, e.g. `2026-11-05 14:32`.

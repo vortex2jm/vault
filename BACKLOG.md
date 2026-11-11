@@ -55,7 +55,7 @@ Severity: 🔴 high · 🟠 medium · 🟡 low
 
 ## Extras
 
-- [ ] **X2** Lean health report: reused and short passwords (age as information only).
+- [x] **X2** Lean health report: reused and short passwords (age as information only).
 - [x] **X3** Password history per entry (last N passwords with dates). Needs E1.
 
 ## Dropped

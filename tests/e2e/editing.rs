@@ -6,7 +6,7 @@ use crate::support::{CTRL_C, CTRL_D, CTRL_U, LEFT, Session, TAB, TempDir, UP};
 fn tab_completes_command_names() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
-    s.keys(&[b"he".as_slice(), TAB, b"\r"].concat());
+    s.keys(&[b"hel".as_slice(), TAB, b"\r"].concat());
     assert!(s.output().contains("create <name>"));
     s.exit();
 }

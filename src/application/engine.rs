@@ -12,6 +12,7 @@ use crate::domain::{
     errors::{StorageError, VaultError},
     format::{self, CURRENT_VERSION, FormatError, VaultFile},
     generator::{self, PasswordOptions},
+    health::{self, Health},
     models::{Entry, KdfParams, VaultState},
     ports::{CryptoPort, StoragePort},
 };
@@ -124,6 +125,14 @@ impl<S: StoragePort, C: CryptoPort> VaultEngine<S, C> {
     /// Gets current vault name if exists
     pub fn current_vault(&self) -> Option<String> {
         self.storage.get_path()
+    }
+
+    /// Reused and short passwords, and how old each is. Never shows one.
+    pub fn health(&self) -> Result<Health, VaultError> {
+        if self.is_locked() {
+            return Err(VaultError::Locked);
+        }
+        Ok(health::report(self.entries.values()))
     }
 
     /// Whether the open vault differs from its last commit. Edits that undo

@@ -42,6 +42,12 @@ impl Entry {
         }
     }
 
+    /// When the current password was set (Unix time): when the previous one
+    /// was replaced, or when the entry was created if it never changed.
+    pub fn password_set_at(&self) -> i64 {
+        self.history.first().map_or(self.created_at, |old| old.replaced_at)
+    }
+
     /// Gives the entry a new service name.
     pub fn rename(&mut self, service: String) {
         self.service = service;

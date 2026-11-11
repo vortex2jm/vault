@@ -64,6 +64,7 @@ fn parses_every_command_with_its_arguments() {
         ("status", Command::Status),
         ("discard", Command::Discard),
         ("restore", Command::Restore),
+        ("health", Command::Health),
         ("rename work", Command::Rename("work".into())),
         ("ls", Command::List),
         ("list", Command::List),
@@ -193,7 +194,8 @@ fn complete(line: &str) -> (usize, Vec<String>) {
 
 #[test]
 fn tab_completes_command_names() {
-    assert_eq!(complete("he"), (0, vec!["help".to_string()]));
+    assert_eq!(complete("hel"), (0, vec!["help".to_string()]));
+    assert_eq!(complete("he").1, ["health", "help"]);
     assert_eq!(complete("c").1, ["clear", "commit", "copy ", "create "]);
     assert_eq!(complete("xyz"), (0, vec![]));
     assert_eq!(complete("").1.len(), Command::NAMES.len());

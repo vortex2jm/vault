@@ -15,6 +15,7 @@ src/
 │   ├── models.rs             # Entry, KdfParams, VaultState
 │   ├── format.rs             # the vault file format, byte by byte
 │   ├── generator.rs          # generated passwords and passphrases (EFF word list)
+│   ├── health.rs             # health report: reused, short and oldest passwords
 │   ├── ports.rs              # CryptoPort, StoragePort (traits)
 │   └── errors.rs             # VaultError, CryptoError, StorageError
 │
@@ -86,6 +87,7 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 | `commit()` | Encrypts current entries, saves to disk with fresh nonce; they become the new last commit |
 | `changes()` | What differs from the last commit: entries added, removed, renamed, or changed (which fields). `is_dirty()` is whether there are any, so edits that undo each other leave the vault clean |
 | `discard()` | Goes back to the last commit, keeping the vault open |
+| `health()` | Reused and short (under 12 characters) passwords, and when each was set; the report holds names and dates, never passwords |
 | `restore_backup(pw)` | Loads the backup in place of the open entries, as uncommitted changes. Checks the password, and derives the backup's own key when it differs (an upgrade's backup is the old file), going back to the vault's key afterwards |
 | `add(svc, user, pw)` | Inserts a new `Entry`, marks dirty |
 | `delete(svc)` | Removes entry (marks dirty only on success) |

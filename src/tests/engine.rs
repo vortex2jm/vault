@@ -816,6 +816,21 @@ fn a_backup_under_another_password_is_reported_as_such() {
 }
 
 #[test]
+fn health_reports_on_the_open_vault() {
+    let dir = TempDir::new();
+    let mut engine = created(&dir, "personal", "password");
+    engine.add("github", "alice", "same-long-password").unwrap();
+    engine.add("gitlab", "alice", "same-long-password").unwrap();
+    engine.add("pin", "me", "1234").unwrap();
+    let report = engine.health().unwrap();
+    assert_eq!(report.reused, [vec!["github", "gitlab"]]);
+    assert_eq!(report.short, [("pin".to_string(), 4)]);
+    assert_eq!(report.ages.len(), 3);
+    engine.lock().unwrap();
+    assert!(matches!(engine.health(), Err(VaultError::Locked)));
+}
+
+#[test]
 fn lock_drops_every_copy_of_the_entries() {
     // Including the copy of the last commit that status and discard use.
     let dir = TempDir::new();

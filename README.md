@@ -13,6 +13,7 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **Interactive selector** (`find`): browse your entries with the arrow keys and fuzzy search
 - **Notes and password history** on each entry: the last 10 passwords are kept, with the date each one was replaced
 - **Auto-lock**: an unlocked vault left alone at the prompt for 5 minutes locks itself (with uncommitted changes it only warns)
+- **Health report** (`health`): reused and short passwords, and the oldest ones
 - **Password generator**: random passwords (optionally without symbols or look-alike characters) and passphrases from the EFF word list, with their strength in bits
 - **Careful clipboard**: `copy` keeps the password out of clipboard managers' history and clears it after 30 s
 - **Crash-safe saves**: every commit writes a new file and atomically swaps it in, keeping the previous version as a backup
@@ -105,6 +106,7 @@ Arguments with spaces go in quotes, as in a shell: `add "My Bank" "joao silva"`,
 | `commit` | — | Save changes to disk |
 | `status` | — | Show what changed since the last commit (added, removed, renamed, changed fields) |
 | `discard` | — | Drop the uncommitted changes, keeping the vault open (asks first) |
+| `health` | — | Report reused passwords and passwords under 12 characters, and list the 5 oldest by when they were set. Never shows a password |
 | `restore` | — | Load the backup (the version the last commit replaced) as uncommitted changes: `status` to review, `commit` to keep, `discard` to undo |
 | `rename` | `<new_name>`| Rename the current vault file |
 | `ls`/`list`| — | List vaults (when locked) or entries (when unlocked) |

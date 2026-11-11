@@ -315,6 +315,25 @@ fn restore_loads_the_backup_as_changes() {
 }
 
 #[test]
+fn health_lists_reused_and_short_passwords_without_showing_them() {
+    let home = TempDir::new();
+    let mut s = Session::start(home.path());
+    s.create("personal", "password");
+    s.command("health");
+    s.expect("No reused or short passwords.");
+    s.add("github", "alice", "same-long-password");
+    s.add("gitlab", "alice", "same-long-password");
+    s.add("pin", "me", "1234");
+    s.command("health");
+    let out = s.output();
+    for line in ["Reused passwords", "  github, gitlab", "Short passwords (under 12 characters):", "  pin (4)", "Oldest passwords"] {
+        assert!(out.contains(line), "{line:?} in {out}");
+    }
+    assert!(!out.contains("same-long-password") && !out.contains("1234"), "{out}");
+    s.exit_discarding();
+}
+
+#[test]
 fn mv_renames_an_entry() {
     let home = TempDir::new();
     let mut s = Session::start(home.path());
