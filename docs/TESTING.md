@@ -7,7 +7,7 @@
 ```text
 src/tests/                unit and component tests of the crate internals
 ├── support.rs            TempDir and engine helpers, the cheap test KDF cost
-├── domain.rs             Entry, KdfParams
+├── domain.rs             Entry (history, notes, wiping, redacted Debug), KdfParams
 ├── format.rs             the file format byte by byte: every version, plaintext codec
 ├── generator.rs          generated passwords and passphrases, with counting "randomness"
 ├── health.rs             the health report: reused, short and oldest passwords
@@ -48,10 +48,11 @@ tests/fixtures/v3.vault   a vault in format v3, with notes and a password histor
 - **Every backlog item ships with tests.** A bug fix makes its `known_bugs` test pass: remove the `#[ignore]` and move the test to the module of its area, in the commit that ticks the item in `BACKLOG.md`. A feature adds tests to the module of its area, and to `tests/e2e/` if it shows up in the terminal.
 - **Known-bug tests describe the behaviour we want**, not the current one. When more than one fix is acceptable (refusing an operation instead of handling it, say), the test accepts any of them and checks the invariant.
 - **Never regenerate the fixtures.** Each `tests/fixtures/vN.vault` proves that vaults written in format N still open. When the format changes again, add a `v4.vault` with the same entries and keep every older test. The password and the expected entries are in `src/tests/compat.rs`.
-- **End-to-end tests type like a user.** `Session::command` waits for the prompt and runs a line, `answer` replies to a sub-prompt (password, y/N, the exit menu), `output` returns what the last command printed, and `expect` waits for any text. Escape sequences are stripped before matching.
+- **End-to-end tests type like a user.** `Session::command` waits for the prompt and runs a line, `answer` replies to a sub-prompt (password, y/N, the exit menu), `output` returns what the last command printed, and `expect` waits for any text. Escape sequences are stripped before matching. `Session::start_with` passes environment variables (`VAULT_AUTO_LOCK` for the auto-lock tests); otherwise it is unset, so the default applies.
+- **Break it on purpose before committing.** For each change, mutate the new code (drop a check, swap a branch, off-by-one a bound) and make sure some test fails; a mutant that survives means a missing test, or code that does nothing.
 
 ## Speed
 
-- **Unit tests derive keys at a tiny cost** (`support::CHEAP`: real Argon2id, 64 KiB, one pass), through `VaultEngine::with_kdf`. They take about 2.5 s, almost all of it one test that round-trips a 5 MiB vault through AES-GCM in a debug build.
-- **End-to-end tests use the real cost** (128 MiB, 3 passes) because they run the shipped binary, so they take about 4 s.
+- **Unit tests derive keys at a tiny cost** (`support::CHEAP`: real Argon2id, 64 KiB, one pass), through `VaultEngine::with_kdf`. They take about 3–4 s, most of it one test that round-trips a 5 MiB vault through AES-GCM in a debug build.
+- **End-to-end tests use the real cost** (128 MiB, 3 passes) because they run the shipped binary; with the auto-lock tests waiting a few seconds, they take about 7 s.
 - `argon2` and `blake2` are compiled with optimisations even in debug builds (see `Cargo.toml`); without that, every derivation would be 10–20× slower.

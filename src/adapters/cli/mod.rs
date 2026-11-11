@@ -647,6 +647,9 @@ import <path>        Import entries from CSV file
 clear                Clear the screen and the scrollback
 help                 Show this help
 exit                 Exit (prompts if unsaved changes)
+
+Names with spaces go in quotes: get "My Bank". An unlocked vault left idle
+at the prompt for 5 minutes locks itself (VAULT_AUTO_LOCK=seconds, 0 = never).
 "#
         );
     }

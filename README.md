@@ -16,9 +16,10 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 - **Health report** (`health`): reused and short passwords, and the oldest ones
 - **Password generator**: random passwords (optionally without symbols or look-alike characters) and passphrases from the EFF word list, with their strength in bits
 - **Careful clipboard**: `copy` keeps the password out of clipboard managers' history and clears it after 30 s
+- **Commit model**: changes stay pending until `commit`; `status` lists them, `discard` drops them, and `restore` brings back the version the last commit replaced
 - **Crash-safe saves**: every commit writes a new file and atomically swaps it in, keeping the previous version as a backup
 - **Safe across sessions**: open the same vault in two terminals; a commit never overwrites what the other one saved
-- **Strict Security**: Memory zeroization (secrets never linger), no core dumps, no debugging or memory reads by your other programs (Linux), owner-only permissions on Unix (`0700` directory; `0600` vaults, backups and exports), and path traversal protection.
+- **Strict Security**: Memory zeroization of the key and every secret (best effort: see the [known gaps](docs/SECURITY.md#key-material-handling)), no core dumps, no debugging or memory reads by your other programs (Linux), owner-only permissions on Unix (`0700` directory; `0600` vaults, backups and exports), and path traversal protection.
 - **Zero network access** — entirely offline
 
 ---
@@ -26,14 +27,14 @@ A local, offline CLI password manager written in Rust. Vault stores your credent
 ## Requirements
 
 - Rust toolchain ≥ 1.89 (edition 2024)
-- **Linux/Unix**: `x11` or `wayland` clipboard dependencies (for the `copy` command via `arboard`)
+- **Linux/Unix**: `copy` needs a graphical session, X11 or XWayland under Wayland (`arboard` talks to X11, with no system libraries to install). Without one, everything else works and `copy` reports the clipboard as unavailable.
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/youruser/vault
+git clone https://github.com/vortex2jm/vault
 cd vault
 cargo install --path .
 ```
@@ -88,7 +89,7 @@ Arguments with spaces go in quotes, as in a shell: `add "My Bank" "joao silva"`,
 | **Core** |
 | `create` | `<name>` | Create a new vault (asks for the password twice; at least 8 characters) |
 | `unlock` | `<name>` | Unlock an existing vault |
-| `lock` | — | Lock the current vault |
+| `lock` | — | Lock the current vault (prompts to commit if there are unsaved changes) |
 | `passwd` | — | Change the current vault's master password (at least 8 characters) |
 | `drop` | `<name>` | Permanently delete a vault and its backup (vault must be locked) |
 | **Entries** |
@@ -184,6 +185,7 @@ aws,admin,"super,secure!",root account
 - Import is all or nothing: if a row is invalid, the error names its line and no entry is added.
 - Importing merges entries: if a service already exists in the vault, or appears twice in the file, the first version is kept and the other row is skipped.
 - The password history is not exported.
+- **Don't round-trip an export through a spreadsheet.** Opening the CSV in Excel, LibreOffice or Google Sheets and saving it again turns values like `0042` into `42`, long numbers into `1.2E+15` and some text into dates. Edit it in a text editor, or import it into the spreadsheet as text.
 
 ---
 

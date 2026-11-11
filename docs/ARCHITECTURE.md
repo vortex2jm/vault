@@ -1,6 +1,6 @@
 # Architecture
 
-Vault follows a **Hexagonal (Ports & Adapters)** architecture. The domain and application logic are entirely isolated from I/O — storage and cryptography are injected as trait objects, making every adapter independently replaceable and testable.
+Vault follows a **Hexagonal (Ports & Adapters)** architecture. The domain and application logic are entirely isolated from I/O — storage and cryptography are injected as generic parameters bound by traits (the ports), making every adapter independently replaceable and testable.
 
 ---
 
@@ -10,9 +10,9 @@ Vault follows a **Hexagonal (Ports & Adapters)** architecture. The domain and ap
 src/
 ├── main.rs                   # Entry point: hardens the process, wires adapters → engine → CLI
 │
-├── domain/                   # Pure business rules, no I/O, no deps
+├── domain/                   # Pure rules and data, no I/O
 │   ├── mod.rs
-│   ├── models.rs             # Entry, KdfParams, VaultState
+│   ├── models.rs             # Entry, OldPassword, KdfParams, VaultState
 │   ├── format.rs             # the vault file format, byte by byte
 │   ├── generator.rs          # generated passwords and passphrases (EFF word list)
 │   ├── health.rs             # health report: reused, short and oldest passwords
@@ -52,7 +52,7 @@ The innermost layer. Contains only:
 - **`format.rs`** — The file format as pure functions: `VaultFile::decode` (v0 to v3) and `encode` (v3), the header used as AES-GCM associated data, and the plaintext codec for the entries. No serialization library: every length is checked against the bytes present.
 - **`ports.rs`** — Pure trait definitions:
   - `CryptoPort` — `salt_gen`, `init`, `reset`, `encrypt`, `decrypt`, `verify_password`, `random_below` (the randomness behind `domain::generator`)
-  - `StoragePort` — `exists`, `set_path`, `get_path`, `load`, `save`, `load_backup`, `list_vaults`
+  - `StoragePort` — `exists`, `set_path`, `get_path`, `load`, `save`, `load_backup`, `list_vaults`, `rename`, `delete`
 - **`errors.rs`** — Typed error hierarchy:
   - `VaultError` — top-level (wraps `CryptoError` and `StorageError`)
   - `CryptoError` — adapter-level crypto failures
@@ -72,7 +72,7 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 ├── crypto: C
 ├── vault_state: Option<VaultState>   // None = locked
 ├── entries: BTreeMap<String, Entry>  // in-memory decrypted entries
-├── dirty: bool                       // true = uncommitted changes
+├── committed: BTreeMap<String, Entry> // as last committed: what changes() and discard() use
 └── kdf: KdfParams                    // cost for new keys (DEFAULT; cheap in unit tests)
 ```
 
@@ -89,12 +89,18 @@ VaultEngine<S: StoragePort, C: CryptoPort>
 | `discard()` | Goes back to the last commit, keeping the vault open |
 | `health()` | Reused and short (under 12 characters) passwords, and when each was set; the report holds names and dates, never passwords |
 | `restore_backup(pw)` | Loads the backup in place of the open entries, as uncommitted changes. Checks the password, and derives the backup's own key when it differs (an upgrade's backup is the old file), going back to the vault's key afterwards |
-| `add(svc, user, pw)` | Inserts a new `Entry`, marks dirty |
-| `delete(svc)` | Removes entry (marks dirty only on success) |
+| `add(svc, user, pw)` | Inserts a new `Entry`; refuses a name already taken, empty, with spaces at its ends or control characters |
+| `update(svc, user, pw)` | Replaces the username and/or the password; a changed password goes to the history |
+| `set_notes(svc, notes)` | Replaces the notes |
+| `delete(svc)` | Removes an entry and returns it |
 | `rename_entry(old, new)` | Renames an entry, keeping its password, notes, history and creation date |
-| `get(svc)` | Returns a reference to an entry |
-| `get_entries()` | Returns sorted list of service names |
+| `get(svc)` / `get_entries()` | An entry by name / the sorted names |
 | `get_vaults()` | Delegates to `StoragePort::list_vaults` |
+| `change_password(old, new)` | New salt and key (at least 8 characters), committed twice so the backup is under the new password too |
+| `rename_vault(new)` / `delete_vault(name)` | The vault's files, through `StoragePort` |
+| `export(path)` / `import(path)` | CSV out (a new `0600` file) / in (columns by header name, all or nothing) |
+| `gen_password(len, options)` / `gen_passphrase(words)` | Bounds-checked calls into `domain::generator`, with `CryptoPort::random_below` as the randomness |
+| `info()` / `kdf_params()` | Name and entry count / the open vault's key cost |
 
 ---
 
@@ -105,8 +111,10 @@ Implements `CryptoPort` using:
 - **Argon2id** for key derivation from password + salt, at the vault's `KdfParams`, in working memory the adapter allocates and wipes afterwards
 - **`Aes256Gcm`** from the `aes-gcm` crate for AEAD encryption, with the file header as associated data
 - A fresh **random nonce** (via `OsRng`) on every `encrypt` call
+- `random_below(n)` — `OsRng` with rejection sampling, for the generator
 - `ZeroizeOnDrop` on the struct — the key is wiped when it is dropped
 - `reset()` — wipes the key in place without dropping the struct (on `lock` and after a failed unlock)
+- The `zeroize` features of `argon2`, `aes-gcm` and `aes` (the last listed in `Cargo.toml` only for that), so intermediate hashes and AES round keys are wiped too
 
 ---
 
@@ -134,19 +142,27 @@ Several sessions can have the same vault open; only a stale commit is refused.
 
 #### `get_path()` — returns the vault **stem** (e.g. `"personal"`), not the full filesystem path, so the prompt displays cleanly.
 
+`load_backup()` reads `<name>.bkp` without touching the SHA-256 this session remembers, so it never makes a later commit look stale.
+
+---
+
+### `adapters/process.rs`
+
+`harden()`, called first thing in `main`: no core dumps (`RLIMIT_CORE` = 0) and, on Linux, a non-dumpable process (`PR_SET_DUMPABLE` = 0), so other programs of the same user can't attach a debugger or read its memory. If it fails, the CLI warns and carries on.
+
 ---
 
 ### `adapters/cli/`
 
 The outermost layer. Implements the interactive REPL.
 
-- **`VaultCli<S, C>`** wraps the engine and a `rustyline::Editor` for line editing.
-- **`run()`** — main loop: refreshes the completion names → reads input → parses command (`Command::parse`) → dispatches to `handle_command`.
+- **`VaultCli<S, C>`** wraps the engine, the main prompt (`Input`), a second editor for answers, and the clipboard (opened on the first copy).
+- **`run()`** — main loop: `next_line()` hands the prompt and the names Tab offers to the prompt thread and waits for a line → `Command::parse` → `handle_command`.
 - **Auto-lock** — the main prompt is read on its own thread (`input.rs`), so the main thread, which owns the engine, can wait for the line with a timeout. When `VAULT_AUTO_LOCK` (300 s by default) passes at the prompt, it calls `lock_if_clean()`: the vault locks, or, with uncommitted changes, stays open with a one-time warning. Everything else that reads the terminal runs on the main thread while the prompt thread waits for its next request. The notice is written directly (rustyline's external printer stalls on input arriving in bursts in 17.0.2).
-- **`confirm_exit()` / `confirm_lock()`** — when `dirty = true`, prompts the user to commit/discard before proceeding.
+- **`confirm_exit()` / `confirm_lock()`** — with uncommitted changes, ask whether to commit, leave them, or cancel.
 - **`commands::words`** — splits a line as a shell does: quotes keep spaces in a word, and `\` escapes outside single quotes (which is also how rustyline's file completion writes spaces). `Command::parse` works on these words, so names and paths can have spaces.
-- **`VaultHelper`** — implements `rustyline::Completer`. Only the word under the cursor is replaced, split the same way as the parser splits it (quotes included), and names that need quotes are offered in them, and what is offered depends on its position: command names in the first word; in the first argument, entry names (`get`, `copy`, `update`, `rm`), vault names (`unlock`, `drop`) or file paths (`import`, `export`), as declared by `Command::first_argument`. The CLI hands it the current entry and vault names before each prompt.
-- **`find()`** — the interactive selector: a `dialoguer` `FuzzySelect` over the entry names, then a `Select` with the actions (copy password or username, show, update, remove), which reuse the regular commands. Esc and Ctrl-C cancel.
+- **`VaultHelper`** — implements `rustyline::Completer`. Only the word under the cursor is replaced, split as the parser splits it (quotes included). What it offers depends on the position, as declared by `Command::first_argument`: command names in the first word; in the first argument, entry names (`get`, `copy`, `update`, `rm`, `mv`, `find`, `history`), vault names (`unlock`, `drop`) or file paths (`import`, `export`). Names that need quotes are offered in them. The CLI hands it the current names before each prompt.
+- **`find()`** — the interactive selector: a `dialoguer` `FuzzySelect` over the entry names, then a `Select` with the actions (copy password or username, show, history, update, remove), which reuse the regular commands. Esc and Ctrl-C cancel.
 - **`SecretClipboard`** (`clipboard.rs`) — what `copy` uses. Each copy is marked as a secret for clipboard managers and gets a timer that clears it 30 s later, if the clipboard still holds it (compared by SHA-256) and no newer copy was made. Dropping it, when the program exits, clears a copy still pending. The system clipboard sits behind a small `Backend` trait, so tests use a fake.
 - Passwords are read with `rpassword` (no echo).
 - Other answers (`update`'s username, y/N confirmations, the commit menus) go through a second `rustyline` editor: arrows and Ctrl-U work, Ctrl-C cancels, and neither Tab completion nor history leak in from the main prompt.
@@ -161,14 +177,16 @@ entries: BTreeMap<String, Entry>
     ▼ format::encode_entries()        (one allocation, zeroized after use)
 plaintext: Vec<u8>
     │
-    ▼ CryptoPort::encrypt(plaintext, header)   header = format::header(v1, kdf, salt)
+    ▼ CryptoPort::encrypt(plaintext, header)   header = format::header(CURRENT_VERSION, kdf, salt)
 (cipher: Vec<u8>, nonce: [u8; 12])
     │
-    ▼ VaultFile { version: 1, kdf, salt, nonce, cipher }.encode()
+    ▼ VaultFile { version: CURRENT_VERSION (3), kdf, salt, nonce, cipher }.encode()
 file bytes: header | nonce | cipher
     │
     ▼ StoragePort::save()  (conflict check, backup, atomic replace)
 ~/.vault/<name>.vault
+    │
+    └──► committed = entries   (the new reference for changes() and discard())
 ```
 
 ## Data Flow: `unlock`
@@ -179,17 +197,18 @@ file bytes: header | nonce | cipher
     ▼ StoragePort::load()
 file bytes
     │
-    ▼ VaultFile::decode()             (v0 or v1; bounded costs; newer → refused)
+    ▼ VaultFile::decode()             (v0 to v3; bounded costs; newer → refused)
 VaultFile { version, kdf, salt, nonce, cipher }
     │
     ├──► CryptoPort::init(password, salt, kdf)   → derives AES key
     │
-    ▼ CryptoPort::decrypt(cipher, nonce, associated_data)   (header for v1, none for v0)
+    ▼ CryptoPort::decrypt(cipher, nonce, associated_data)   (the header from v1 on, none for v0)
 plaintext: Vec<u8>
     │
-    ▼ format::decode_entries()        (then the plaintext is zeroized)
-entries: BTreeMap<String, Entry>
+    ▼ format::decode_entries(version) (then the plaintext is zeroized)
+entries: BTreeMap<String, Entry>   (also kept as `committed`)
     │
-    └──► if v0 or kdf weaker than the engine's: new salt, key at the current
-         cost, commit → Upgrade::Done (old file kept as .bkp)
+    └──► if older than the current format: rewritten by a commit → Upgrade::Done,
+         the old file kept as .bkp. If v0 or keyed below the engine's cost,
+         with a new salt and a key at the current cost first; never cheaper.
 ```
